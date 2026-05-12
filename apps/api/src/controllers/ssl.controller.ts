@@ -70,6 +70,20 @@ export const recheckHandler = factory.createHandlers(
     const email = c.get('userEmail')
 
     try {
+      const domainDoc = await DomainModel.findOne({ domainName: domain, organizationId: orgId })
+      if (!domainDoc) {
+        return ApiResponse.error(c, 'Domain not found', 'NOT_FOUND', 404)
+      }
+
+      const TTL = 5 * 60 * 1000 // 5 minutes
+      if (domainDoc.lastChecked && (Date.now() - domainDoc.lastChecked.getTime() < TTL)) {
+        const timeLeft = Math.ceil((TTL - (Date.now() - domainDoc.lastChecked.getTime())) / 1000)
+        return ApiResponse.error(c, `Please wait ${timeLeft} seconds before retrying verification.`, 'TTL_BLOCK', 429)
+      }
+
+      // Update lastChecked immediately to prevent concurrent attempts
+      await DomainModel.updateOne({ _id: domainDoc._id }, { $set: { lastChecked: new Date() } })
+
       const result = await acmeService.verifyAndIssue(domain, orgId, email)
       return ApiResponse.success(c, result, 'Certificate issued successfully.')
     } catch (error: unknown) {
@@ -88,7 +102,7 @@ export const listCertificatesHandler = factory.createHandlers(async (c) => {
 
   try {
     const domains = await DomainModel.find({ organizationId: orgId })
-      .select('domainName status txtRecordName txtRecordValue renewalError expiryDate createdAt updatedAt')
+      .select('domainName status txtRecordName txtRecordValue renewalError lastChecked expiryDate createdAt updatedAt')
       .sort({ createdAt: -1 })
       .lean()
 
