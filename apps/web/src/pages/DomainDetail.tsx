@@ -96,7 +96,7 @@ export default function DomainDetail() {
   if (isLoading) {
     return (
       <main className="flex-1 flex items-center justify-center">
-        <span className="loading loading-spinner loading-lg" style={{ color: 'oklch(62% 0.26 265)' }} />
+        <span className="loading loading-spinner loading-lg" style={{ color: 'var(--c-primary)' }} />
       </main>
     )
   }
@@ -129,7 +129,7 @@ export default function DomainDetail() {
         <Link
           to="/certificates"
           className="flex items-center gap-1.5 text-sm mb-4"
-          style={{ color: 'oklch(52% 0.015 265)' }}
+          style={{ color: 'var(--c-text-2)' }}
         >
           <ArrowLeft className="w-4 h-4" />
           Certificates
@@ -138,10 +138,10 @@ export default function DomainDetail() {
         <div className="flex items-start gap-3">
           <div>
             <div className="flex items-center gap-3 flex-wrap">
-              <h1 className="text-2xl font-bold font-mono">{domain.domainName}</h1>
+              <h1 className="text-2xl font-bold font-mono" style={{ color: 'var(--c-text-1)' }}>{domain.domainName}</h1>
               <StatusBadge status={domain.status} expiring={isExpiringSoon} />
             </div>
-            <p className="text-sm mt-1" style={{ color: 'oklch(52% 0.015 265)' }}>
+            <p className="text-sm mt-1" style={{ color: 'var(--c-text-2)' }}>
               SSL certificate details and management
             </p>
           </div>
@@ -155,47 +155,45 @@ export default function DomainDetail() {
             icon: Calendar,
             label: 'Issued',
             value: fmt(domain.createdAt),
-            color: 'oklch(62% 0.26 265)',
+            color: 'var(--c-primary)',
           },
           {
             icon: Clock,
             label: 'Expires',
             value: fmt(domain.expiryDate),
             color: hasExpired
-              ? 'oklch(65% 0.22 25)'
+              ? 'var(--c-error)'
               : isExpiringSoon
-              ? 'oklch(78% 0.18 78)'
-              : 'oklch(52% 0.015 265)',
+              ? 'var(--c-warning)'
+              : 'var(--c-text-2)',
           },
           {
             icon: RefreshCw,
             label: 'Days Left',
             value: days === null ? '—' : days < 0 ? 'Expired' : `${days}d`,
             color: hasExpired
-              ? 'oklch(65% 0.22 25)'
+              ? 'var(--c-error)'
               : isExpiringSoon
-              ? 'oklch(78% 0.18 78)'
-              : 'oklch(70% 0.20 150)',
+              ? 'var(--c-warning)'
+              : 'var(--c-success)',
           },
           {
             icon: Globe,
             label: 'Last Updated',
             value: fmt(domain.updatedAt),
-            color: 'oklch(52% 0.015 265)',
+            color: 'var(--c-text-2)',
           },
         ].map(({ icon: Icon, label, value, color }) => (
           <div
             key={label}
-            className="card"
-            style={{ background: 'oklch(17% 0.025 265)', border: '1px solid oklch(26% 0.03 265 / 0.5)' }}
+            className="rounded-2xl p-4 flex flex-col gap-2"
+            style={{ background: 'var(--c-card)', border: '1px solid var(--c-border)' }}
           >
-            <div className="card-body p-4 gap-2">
-              <div className="flex items-center gap-2" style={{ color: 'oklch(44% 0.02 265)' }}>
-                <Icon className="w-3.5 h-3.5" />
-                <span className="text-xs font-semibold uppercase tracking-wider">{label}</span>
-              </div>
-              <p className="font-semibold text-sm" style={{ color }}>{value}</p>
+            <div className="flex items-center gap-2" style={{ color: 'var(--c-text-3)' }}>
+              <Icon className="w-3.5 h-3.5" />
+              <span className="text-xs font-semibold uppercase tracking-wider">{label}</span>
             </div>
+            <p className="font-semibold text-sm" style={{ color }}>{value}</p>
           </div>
         ))}
       </div>
@@ -204,22 +202,22 @@ export default function DomainDetail() {
       {domain.renewalError && (
         <div
           className="rounded-xl p-5"
-          style={{ background: 'oklch(17% 0.025 265)', border: '1px solid oklch(65% 0.22 25 / 0.4)' }}
+          style={{ background: 'var(--c-card)', border: '1px solid oklch(58% 0.22 25 / 0.35)' }}
         >
           <div className="flex items-start gap-3 mb-4">
             <div
               className="w-9 h-9 rounded-xl flex items-center justify-center shrink-0"
-              style={{ background: 'oklch(65% 0.22 25 / 0.12)' }}
+              style={{ background: 'var(--c-error-soft)' }}
             >
-              <AlertCircle className="w-5 h-5" style={{ color: 'oklch(65% 0.22 25)' }} />
+              <AlertCircle className="w-5 h-5" style={{ color: 'var(--c-error)' }} />
             </div>
             <div>
-              <p className="font-semibold text-sm">Auto-Renewal Failed</p>
-              <p className="text-xs mt-0.5" style={{ color: 'oklch(52% 0.015 265)' }}>
+              <p className="font-semibold text-sm" style={{ color: 'var(--c-text-1)' }}>Auto-Renewal Failed</p>
+              <p className="text-xs mt-0.5" style={{ color: 'var(--c-text-2)' }}>
                 The scheduled renewal could not initiate automatically. Manual action required.
               </p>
               {domain.renewalFailedAt && (
-                <p className="text-xs mt-1" style={{ color: 'oklch(44% 0.02 265)' }}>
+                <p className="text-xs mt-1" style={{ color: 'var(--c-text-3)' }}>
                   Failed at: {new Date(domain.renewalFailedAt).toLocaleString()}
                 </p>
               )}
@@ -227,7 +225,7 @@ export default function DomainDetail() {
           </div>
           <div
             className="rounded-lg p-3 mb-4 font-mono text-xs break-all"
-            style={{ background: 'oklch(13% 0.02 265)', color: 'oklch(65% 0.22 25)' }}
+            style={{ background: 'var(--c-code-bg)', border: '1px solid var(--c-border)', color: 'var(--c-error)' }}
           >
             {domain.renewalError}
           </div>
@@ -235,7 +233,11 @@ export default function DomainDetail() {
             onClick={() => initiateMutation.mutate(domain.domainName)}
             disabled={initiateMutation.isPending}
             className="btn btn-sm gap-2"
-            style={{ background: 'oklch(65% 0.22 25 / 0.15)', borderColor: 'oklch(65% 0.22 25 / 0.4)', color: 'oklch(65% 0.22 25)' }}
+            style={{
+              background: 'var(--c-error-soft)',
+              borderColor: 'oklch(58% 0.22 25 / 0.35)',
+              color: 'var(--c-error)',
+            }}
           >
             {initiateMutation.isPending
               ? <span className="loading loading-spinner loading-xs" />
@@ -243,7 +245,7 @@ export default function DomainDetail() {
             Trigger Manual Renewal
           </button>
           {initiateMutation.isError && (
-            <p className="text-xs mt-2" style={{ color: 'oklch(65% 0.22 25)' }}>
+            <p className="text-xs mt-2" style={{ color: 'var(--c-error)' }}>
               {getApiError(initiateMutation.error, 'Failed to initiate renewal.')}
             </p>
           )}
@@ -253,20 +255,20 @@ export default function DomainDetail() {
       {/* ── DNS Challenge Card ── */}
       {domain.status === 'pending_challenge' && (
         <div
-          className="card"
-          style={{ background: 'oklch(17% 0.025 265)', border: '1px solid oklch(78% 0.18 78 / 0.3)' }}
+          className="rounded-2xl"
+          style={{ background: 'var(--c-card)', border: '1px solid oklch(72% 0.19 80 / 0.35)' }}
         >
-          <div className="card-body p-6">
+          <div className="p-6">
             <div className="flex items-start gap-3 mb-5">
               <div
                 className="w-9 h-9 rounded-xl flex items-center justify-center shrink-0"
-                style={{ background: 'oklch(78% 0.18 78 / 0.1)' }}
+                style={{ background: 'var(--c-warning-soft)' }}
               >
-                <AlertTriangle className="w-5 h-5" style={{ color: 'oklch(78% 0.18 78)' }} />
+                <AlertTriangle className="w-5 h-5" style={{ color: 'var(--c-warning)' }} />
               </div>
               <div>
-                <p className="font-semibold">DNS Challenge Required</p>
-                <p className="text-xs mt-0.5" style={{ color: 'oklch(52% 0.015 265)' }}>
+                <p className="font-semibold" style={{ color: 'var(--c-text-1)' }}>DNS Challenge Required</p>
+                <p className="text-xs mt-0.5" style={{ color: 'var(--c-text-2)' }}>
                   Add this TXT record to your DNS provider to verify domain ownership.
                 </p>
               </div>
@@ -274,10 +276,10 @@ export default function DomainDetail() {
 
             <div
               className="rounded-xl p-4 space-y-4 font-mono text-sm"
-              style={{ background: 'oklch(13% 0.02 265)', border: '1px solid oklch(22% 0.03 265 / 0.6)' }}
+              style={{ background: 'var(--c-surface)', border: '1px solid var(--c-border)' }}
             >
               <div className="flex items-center justify-between">
-                <span className="text-xs uppercase tracking-wider" style={{ color: 'oklch(44% 0.02 265)' }}>Type</span>
+                <span className="text-xs uppercase tracking-wider" style={{ color: 'var(--c-text-3)' }}>Type</span>
                 <span className="badge badge-neutral font-mono text-xs">TXT</span>
               </div>
               {[
@@ -285,17 +287,17 @@ export default function DomainDetail() {
                   label: 'Name',
                   value: domain.txtRecordName ?? `_acme-challenge.${domain.domainName}`,
                   key: 'txt-name',
-                  color: 'oklch(74% 0.20 196)',
+                  color: 'var(--c-info)',
                 },
                 {
                   label: 'Value',
                   value: domain.txtRecordValue ?? '(not available)',
                   key: 'txt-value',
-                  color: 'oklch(78% 0.18 300)',
+                  color: 'var(--c-purple)',
                 },
               ].map(({ label, value, key, color }) => (
                 <div key={key} className="space-y-1.5">
-                  <span className="text-xs uppercase tracking-wider" style={{ color: 'oklch(44% 0.02 265)' }}>{label}</span>
+                  <span className="text-xs uppercase tracking-wider" style={{ color: 'var(--c-text-3)' }}>{label}</span>
                   <div className="flex items-start gap-2">
                     <span className="flex-1 break-all" style={{ color }}>{value}</span>
                     <button
@@ -304,14 +306,14 @@ export default function DomainDetail() {
                     >
                       {copiedKey === key
                         ? <Check className="w-3.5 h-3.5 text-success" />
-                        : <Copy className="w-3.5 h-3.5" style={{ color: 'oklch(46% 0.02 265)' }} />}
+                        : <Copy className="w-3.5 h-3.5" style={{ color: 'var(--c-text-2)' }} />}
                     </button>
                   </div>
                 </div>
               ))}
             </div>
 
-            <p className="text-xs mt-3" style={{ color: 'oklch(42% 0.015 265)' }}>
+            <p className="text-xs mt-3" style={{ color: 'var(--c-text-3)' }}>
               DNS propagation can take a few minutes. Click verify once the record is live.
             </p>
 
@@ -350,21 +352,21 @@ export default function DomainDetail() {
       {/* ── Stored Certificate (active) ── */}
       {domain.status === 'active' && domain.certPem && (
         <div
-          className="card"
-          style={{ background: 'oklch(17% 0.025 265)', border: '1px solid oklch(70% 0.20 150 / 0.3)' }}
+          className="rounded-2xl"
+          style={{ background: 'var(--c-card)', border: '1px solid var(--c-primary-mid)' }}
         >
-          <div className="card-body p-6">
+          <div className="p-6">
             <div className="flex items-center justify-between mb-4">
               <div className="flex items-center gap-3">
                 <div
                   className="w-9 h-9 rounded-xl flex items-center justify-center"
-                  style={{ background: 'oklch(70% 0.20 150 / 0.12)' }}
+                  style={{ background: 'var(--c-success-soft)' }}
                 >
-                  <ShieldCheck className="w-5 h-5" style={{ color: 'oklch(70% 0.20 150)' }} />
+                  <ShieldCheck className="w-5 h-5" style={{ color: 'var(--c-success)' }} />
                 </div>
                 <div>
-                  <p className="font-semibold">Certificate</p>
-                  <p className="text-xs" style={{ color: 'oklch(52% 0.015 265)' }}>
+                  <p className="font-semibold" style={{ color: 'var(--c-text-1)' }}>Certificate</p>
+                  <p className="text-xs" style={{ color: 'var(--c-text-2)' }}>
                     Last issued certificate (PEM)
                   </p>
                 </div>
@@ -391,9 +393,9 @@ export default function DomainDetail() {
             <div
               className="rounded-xl p-4 font-mono text-xs overflow-x-auto"
               style={{
-                background: 'oklch(13% 0.02 265)',
-                border: '1px solid oklch(22% 0.03 265 / 0.6)',
-                color: 'oklch(74% 0.20 196)',
+                background: 'var(--c-code-bg)',
+                border: '1px solid var(--c-border)',
+                color: 'var(--c-info)',
               }}
             >
               <pre className="whitespace-pre-wrap break-all">
@@ -408,14 +410,14 @@ export default function DomainDetail() {
       {/* ── Actions (failed / expired without renewalError) ── */}
       {(domain.status === 'failed' || (domain.status === 'expired' && !domain.renewalError)) && (
         <div
-          className="card"
-          style={{ background: 'oklch(17% 0.025 265)', border: '1px solid oklch(26% 0.03 265 / 0.5)' }}
+          className="rounded-2xl"
+          style={{ background: 'var(--c-card)', border: '1px solid var(--c-border)' }}
         >
-          <div className="card-body p-6">
-            <p className="font-semibold mb-1">
+          <div className="p-6">
+            <p className="font-semibold mb-1" style={{ color: 'var(--c-text-1)' }}>
               {domain.status === 'failed' ? 'Certificate Failed' : 'Certificate Expired'}
             </p>
-            <p className="text-sm mb-4" style={{ color: 'oklch(52% 0.015 265)' }}>
+            <p className="text-sm mb-4" style={{ color: 'var(--c-text-2)' }}>
               {domain.status === 'failed'
                 ? 'Verification failed. Retry to start a fresh ACME challenge.'
                 : 'Certificate has expired. Renew to begin a new issuance flow.'}
@@ -431,7 +433,7 @@ export default function DomainDetail() {
               {domain.status === 'failed' ? 'Retry Issuance' : 'Renew Certificate'}
             </button>
             {initiateMutation.isError && (
-              <p className="text-xs mt-2" style={{ color: 'oklch(65% 0.22 25)' }}>
+              <p className="text-xs mt-2" style={{ color: 'var(--c-error)' }}>
                 {getApiError(initiateMutation.error, 'Failed to initiate.')}
               </p>
             )}
@@ -493,19 +495,19 @@ function CertModal({
     <div className="modal modal-open">
       <div
         className="modal-box max-w-2xl"
-        style={{ background: 'oklch(17% 0.025 265)', border: '1px solid oklch(70% 0.20 150 / 0.3)' }}
+        style={{ background: 'var(--c-card)', border: '1px solid var(--c-primary-mid)' }}
       >
         <div className="flex items-start justify-between mb-4">
           <div className="flex items-center gap-3">
             <div
               className="w-9 h-9 rounded-xl flex items-center justify-center"
-              style={{ background: 'oklch(70% 0.20 150 / 0.12)' }}
+              style={{ background: 'var(--c-success-soft)' }}
             >
-              <ShieldCheck className="w-5 h-5" style={{ color: 'oklch(70% 0.20 150)' }} />
+              <ShieldCheck className="w-5 h-5" style={{ color: 'var(--c-success)' }} />
             </div>
             <div>
-              <h3 className="font-bold text-lg leading-none">Certificate Issued</h3>
-              <p className="text-xs mt-1 font-mono" style={{ color: 'oklch(74% 0.20 196)' }}>{cert.domain}</p>
+              <h3 className="font-bold text-lg leading-none" style={{ color: 'var(--c-text-1)' }}>Certificate Issued</h3>
+              <p className="text-xs mt-1 font-mono" style={{ color: 'var(--c-info)' }}>{cert.domain}</p>
             </div>
           </div>
           <button onClick={onClose} className="btn btn-ghost btn-sm btn-square">
@@ -513,19 +515,19 @@ function CertModal({
           </button>
         </div>
 
-        <p className="text-sm mb-5" style={{ color: 'oklch(52% 0.015 265)' }}>
+        <p className="text-sm mb-5" style={{ color: 'var(--c-text-2)' }}>
           Save both files securely — the private key is shown only once.
         </p>
 
         {[
-          { label: 'Certificate', value: cert.cert, key: 'modal-cert', filename: `${cert.domain}.crt`, color: 'oklch(74% 0.20 196)' },
-          { label: 'Private Key', value: cert.key, key: 'modal-key', filename: `${cert.domain}.key`, color: 'oklch(78% 0.18 300)' },
+          { label: 'Certificate', value: cert.cert, key: 'modal-cert', filename: `${cert.domain}.crt`, color: 'var(--c-info)' },
+          { label: 'Private Key', value: cert.key, key: 'modal-key', filename: `${cert.domain}.key`, color: 'var(--c-purple)' },
         ].map(({ label, value, key, filename, color }) => (
           <div key={key} className="mb-4">
             <div className="flex items-center justify-between mb-2">
               <span
                 className="text-xs font-semibold uppercase tracking-wider"
-                style={{ color: 'oklch(50% 0.02 265)' }}
+                style={{ color: 'var(--c-text-2)' }}
               >
                 {label}
               </span>
@@ -543,8 +545,8 @@ function CertModal({
             <div
               className="rounded-xl p-4 font-mono text-xs overflow-x-auto"
               style={{
-                background: 'oklch(13% 0.02 265)',
-                border: '1px solid oklch(22% 0.03 265 / 0.6)',
+                background: 'var(--c-code-bg)',
+                border: '1px solid var(--c-border)',
                 color,
               }}
             >
