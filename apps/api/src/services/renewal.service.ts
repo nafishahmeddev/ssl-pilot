@@ -81,10 +81,31 @@ async function initiateRenewalOrders(): Promise<RenewalResult> {
 
   logger.info({ count: expired.length }, 'Renewal[2/2]: initiating ACME orders for expired certificates')
 
+  const TTL = 5 * 60 * 1000 // 5 minutes
+  const ttlEdge = new Date(Date.now() - TTL)
+
   for (const domain of expired) {
     const log = logger.child({ domain: domain.domainName, orgId: domain.organizationId.toString() })
 
     try {
+      // Claim the task atomically to prevent race conditions
+      const updateResult = await DomainModel.updateOne(
+        {
+          _id: domain._id,
+          status: 'expired',
+          $or: [
+            { lastChecked: { $exists: false } },
+            { lastChecked: { $lt: ttlEdge } },
+          ],
+        },
+        { $set: { lastChecked: new Date() } }
+      )
+
+      if (updateResult.modifiedCount === 0) {
+        log.info('Renewal: skipping, already picked up by another process or status changed')
+        continue
+      }
+
       // Fetch org admin to obtain the contact email for this ACME account
       const admin = await UserModel.findOne({
         organizationId: new Types.ObjectId(domain.organizationId),
