@@ -11,6 +11,7 @@ export interface IDomain extends Document {
   acmeChallengeUrl?: string
   txtRecordName?: string
   txtRecordValue?: string
+  certPem?: string
   lastChecked?: Date
   expiryDate?: Date
   createdAt: Date
@@ -30,6 +31,7 @@ const domainSchema = new Schema<IDomain>(
     acmeChallengeUrl: { type: String },
     txtRecordName: { type: String },
     txtRecordValue: { type: String },
+    certPem: { type: String },
     lastChecked: { type: Date },
     expiryDate: { type: Date },
   },

@@ -1,6 +1,7 @@
 import { logger } from '@src/shared/utils/logger'
 import acme from 'acme-client'
 import type { DnsChallenge } from 'acme-client/types/rfc8555'
+import { X509Certificate } from 'crypto'
 import { env } from '@src/shared/config/env'
 import { DomainModel } from '@src/models/domain.model'
 import { OrganizationModel } from '@src/models/organization.model'
@@ -139,13 +140,17 @@ export class AcmeService {
     const finalizedOrder = await client.finalizeOrder(order, csr)
     const cert = await client.getCertificate(finalizedOrder)
 
+    const certStr = cert.toString()
+    const x509 = new X509Certificate(certStr)
+    const expiryDate = new Date(x509.validTo)
+
     await DomainModel.findOneAndUpdate(
       { domainName: domain, organizationId: orgId },
-      { status: 'active' }
+      { status: 'active', expiryDate, certPem: certStr }
     )
 
-    logger.info({ domain, orgId }, 'ACME: certificate issued')
-    return { cert: cert.toString(), key: certKey.toString() }
+    logger.info({ domain, orgId, expiryDate }, 'ACME: certificate issued')
+    return { cert: certStr, key: certKey.toString() }
   }
 }
 

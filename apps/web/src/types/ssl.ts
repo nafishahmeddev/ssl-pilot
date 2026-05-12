@@ -16,6 +16,7 @@ export interface DomainRecord {
   status: 'pending' | 'pending_challenge' | 'active' | 'expired' | 'failed'
   txtRecordName?: string
   txtRecordValue?: string
+  certPem?: string
   expiryDate?: string
   createdAt: string
   updatedAt: string

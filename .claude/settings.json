@@ -1,7 +1,9 @@
 {
   "permissions": {
     "allow": [
-      "Bash(npx tsc *)"
+      "Bash(npx tsc *)",
+      "Bash(npm install *)",
+      "Bash(node -e \"const m = require\\('mongoose'\\); console.log\\(typeof m.FilterQuery, Object.keys\\(m\\).filter\\(k=>k.includes\\('Filter'\\)\\)\\)\")"
     ]
   }
 }

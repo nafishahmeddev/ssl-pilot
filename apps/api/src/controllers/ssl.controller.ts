@@ -48,6 +48,22 @@ export const verifySslHandler = factory.createHandlers(
   }
 )
 
+export const recheckHandler = factory.createHandlers(
+  zValidator('json', domainSchema),
+  async (c) => {
+    const { domain } = c.req.valid('json')
+    const orgId = c.get('organizationId')
+    const email = c.get('userEmail')
+
+    try {
+      const result = await acmeService.verifyAndIssue(domain, orgId, email)
+      return ApiResponse.success(c, result, 'Certificate issued successfully.')
+    } catch (error: unknown) {
+      return ApiResponse.error(c, (error as Error).message, 'RECHECK_ERROR', 500)
+    }
+  }
+)
+
 export const listCertificatesHandler = factory.createHandlers(async (c) => {
   const orgId = c.get('organizationId')
 
