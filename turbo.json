@@ -9,6 +9,11 @@
       "cache": false,
       "persistent": true
     },
-    "lint": {}
+    "lint": {},
+    "start": {
+      "dependsOn": ["build"],
+      "cache": false,
+      "persistent": true
+    }
   }
 }
