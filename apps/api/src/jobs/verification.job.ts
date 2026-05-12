@@ -50,23 +50,26 @@ export function stopVerificationJob(): void {
  * Respects a 5-minute TTL between attempts.
  */
 async function checkAndVerifyPending(): Promise<void> {
-  const pending = await DomainModel.find({ status: 'pending_challenge' })
+  const TTL = 5 * 60 * 1000 // 5 minutes
+  const ttlEdge = new Date(Date.now() - TTL)
+
+  const pending = await DomainModel.find({
+    status: 'pending_challenge',
+    $or: [
+      { lastChecked: { $exists: false } },
+      { lastChecked: { $lt: ttlEdge } },
+    ],
+  })
   
   if (pending.length === 0) {
     logger.info('Verification job: no pending challenges to verify')
     return
   }
 
-  const TTL = 5 * 60 * 1000 // 5 minutes
-
   for (const domain of pending) {
     const log = logger.child({ domain: domain.domainName, orgId: domain.organizationId.toString() })
 
     try {
-      if (domain.lastChecked && (Date.now() - domain.lastChecked.getTime() < TTL)) {
-        log.info('Verification job: skipping, TTL not elapsed')
-        continue
-      }
 
       const admin = await UserModel.findOne({
         organizationId: new Types.ObjectId(domain.organizationId),
