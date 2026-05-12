@@ -1,14 +1,17 @@
-import { Schema, model, Document } from 'mongoose'
+import { Schema, model, Document, Types } from 'mongoose'
 import bcrypt from 'bcryptjs'
 
 /**
  * Interface for User document.
+ *
+ * Uses `Types.ObjectId` (not `Schema.Types.ObjectId`) so Mongoose query
+ * filter overloads resolve correctly when filtering by `organizationId`.
  */
 export interface IUser extends Document {
   name: string
   email: string
   password: string
-  organizationId: Schema.Types.ObjectId
+  organizationId: Types.ObjectId
   role: 'admin' | 'member'
   comparePassword(password: string): Promise<boolean>
 }

@@ -1,15 +1,50 @@
 import { useQuery } from '@tanstack/react-query'
 import { getCertificatesApi } from '../api/ssl'
-import { ShieldCheck, Shield, AlertCircle } from 'lucide-react'
+import { ShieldCheck, Shield, AlertCircle, XCircle } from 'lucide-react'
 import type { DomainRecord } from '../types/ssl'
 
-function getExpiringCount(certs: DomainRecord[]): number {
-  const now = Date.now()
-  const threshold = 30 * 24 * 60 * 60 * 1000
-  return certs.filter((c) => {
-    if (c.status !== 'active' || !c.expiryDate) return false
-    return new Date(c.expiryDate).getTime() - now < threshold
-  }).length
+interface StatCard {
+  icon: React.ElementType
+  label: string
+  value: string
+  desc: string
+  color: string
+  bg: string
+}
+
+function buildStats(certs: DomainRecord[], isLoading: boolean): StatCard[] {
+  const total = certs.length
+  const active = certs.filter((c) => c.status === 'active').length
+  const expired = certs.filter((c) => c.status === 'expired').length
+
+  const val = (n: number) => (isLoading ? '—' : String(n))
+
+  return [
+    {
+      icon: Shield,
+      label: 'Total Certificates',
+      value: val(total),
+      desc: total === 0 ? 'No certificates yet' : `${total} domain${total !== 1 ? 's' : ''}`,
+      color: 'oklch(62% 0.26 265)',
+      bg: 'oklch(62% 0.26 265 / 0.1)',
+    },
+    {
+      icon: ShieldCheck,
+      label: 'Active',
+      value: val(active),
+      desc: active === 0 ? 'None active' : `${active} valid`,
+      color: 'oklch(70% 0.20 150)',
+      bg: 'oklch(70% 0.20 150 / 0.1)',
+    },
+    {
+      icon: XCircle,
+      label: 'Expired',
+      value: val(expired),
+      desc: expired === 0 ? 'All clear' : 'Auto-renewal queued',
+      color: 'oklch(65% 0.22 25)',
+      bg: 'oklch(65% 0.22 25 / 0.1)',
+    },
+  ]
 }
 
 export default function Dashboard() {
@@ -19,36 +54,7 @@ export default function Dashboard() {
   })
 
   const certs = data?.data.certificates ?? []
-  const total = certs.length
-  const active = certs.filter((c) => c.status === 'active').length
-  const expiring = getExpiringCount(certs)
-
-  const stats = [
-    {
-      icon: Shield,
-      label: 'Total Certificates',
-      value: isLoading ? '—' : String(total),
-      desc: total === 0 ? 'No certificates yet' : `${total} domain${total !== 1 ? 's' : ''}`,
-      color: 'oklch(62% 0.26 265)',
-      bg: 'oklch(62% 0.26 265 / 0.1)',
-    },
-    {
-      icon: ShieldCheck,
-      label: 'Active',
-      value: isLoading ? '—' : String(active),
-      desc: active === 0 ? 'None active' : `${active} valid`,
-      color: 'oklch(70% 0.20 150)',
-      bg: 'oklch(70% 0.20 150 / 0.1)',
-    },
-    {
-      icon: AlertCircle,
-      label: 'Expiring Soon',
-      value: isLoading ? '—' : String(expiring),
-      desc: 'Within 30 days',
-      color: 'oklch(78% 0.18 78)',
-      bg: 'oklch(78% 0.18 78 / 0.1)',
-    },
-  ]
+  const stats = buildStats(certs, isLoading)
 
   return (
     <main className="flex-1 p-5 lg:p-8 max-w-5xl w-full mx-auto space-y-6">
@@ -81,7 +87,10 @@ export default function Dashboard() {
                 <Icon className="w-5 h-5" style={{ color }} />
               </div>
               <div>
-                <p className="text-xs font-semibold uppercase tracking-wider mb-1" style={{ color: 'oklch(46% 0.02 265)' }}>
+                <p
+                  className="text-xs font-semibold uppercase tracking-wider mb-1"
+                  style={{ color: 'oklch(46% 0.02 265)' }}
+                >
                   {label}
                 </p>
                 {isLoading ? (
@@ -137,10 +146,10 @@ export default function Dashboard() {
 }
 
 function StatusBadge({ status }: { status: DomainRecord['status'] }) {
-  const map = {
+  const map: Record<DomainRecord['status'], { label: string; cls: string }> = {
     active: { label: 'Active', cls: 'badge-success' },
     pending: { label: 'Pending', cls: 'badge-neutral' },
-    pending_challenge: { label: 'Challenge', cls: 'badge-warning' },
+    pending_challenge: { label: 'DNS Pending', cls: 'badge-warning' },
     expired: { label: 'Expired', cls: 'badge-error' },
     failed: { label: 'Failed', cls: 'badge-error' },
   }
