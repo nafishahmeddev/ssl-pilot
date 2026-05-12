@@ -81,8 +81,23 @@ async function checkAndVerifyPending(): Promise<void> {
         continue
       }
 
-      // Update lastChecked immediately
-      await DomainModel.updateOne({ _id: domain._id }, { $set: { lastChecked: new Date() } })
+      // Update lastChecked immediately with a lock condition to prevent race conditions
+      const updateResult = await DomainModel.updateOne(
+        {
+          _id: domain._id,
+          status: 'pending_challenge',
+          $or: [
+            { lastChecked: { $exists: false } },
+            { lastChecked: { $lt: ttlEdge } },
+          ],
+        },
+        { $set: { lastChecked: new Date() } }
+      )
+
+      if (updateResult.modifiedCount === 0) {
+        log.info('Verification job: skipping, already picked up by another process or status changed')
+        continue
+      }
 
       log.info('Verification job: attempting verification')
       await acmeService.verifyAndIssue(
