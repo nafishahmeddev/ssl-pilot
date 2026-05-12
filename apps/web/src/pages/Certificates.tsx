@@ -1,10 +1,10 @@
 import { useState, useRef, useCallback } from 'react'
 import { Link } from 'react-router-dom'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
-import { getCertificatesApi, initiateSslApi, verifySslApi, recheckSslApi, deleteDomainApi } from '../api/ssl'
+import { getCertificatesApi, initiateSslApi, verifySslApi } from '../api/ssl'
 import { getApiError } from '../api/errors'
 import { useCooldown } from '../hooks/useCooldown'
-import type { DomainRecord, DomainStatus, IssuedCertificate } from '../types/ssl'
+import type { DomainStatus, IssuedCertificate } from '../types/ssl'
 import {
   Globe,
   ShieldCheck,
@@ -15,12 +15,8 @@ import {
   Download,
   RotateCcw,
   Plus,
-  RefreshCw,
-  ChevronDown,
-  ChevronRight,
   X,
   ExternalLink,
-  Trash2,
 } from 'lucide-react'
 
 interface ChallengeState { domain: string; txtName: string; txtValue: string }
@@ -40,7 +36,7 @@ export default function Certificates() {
   const [formDomain, setFormDomain] = useState('')
   const [challenge, setChallenge] = useState<ChallengeState | null>(null)
   const [certificate, setCertificate] = useState<CertState | null>(null)
-  const [expandedRow, setExpandedRow] = useState<string | null>(null)
+
   const [modalCert, setModalCert] = useState<CertState | null>(null)
   const [copiedKey, setCopiedKey] = useState<string | null>(null)
 
@@ -79,7 +75,6 @@ export default function Certificates() {
       setChallenge({ domain, txtName: res.data.txtName, txtValue: res.data.txtValue })
       setCertificate(null)
       setShowForm(false)
-      setExpandedRow(null)
       qc.invalidateQueries({ queryKey: ['certificates'] })
     },
   })
@@ -94,32 +89,16 @@ export default function Certificates() {
     },
   })
 
-  const recheckMutation = useMutation({
-    mutationFn: (d: string) => recheckSslApi(d),
-    onSettled: (_, __, domain) => startDomainCooldown(domain, 60_000),
-    onSuccess: (res, domain) => {
-      setModalCert({ domain, ...res.data })
-      setExpandedRow(null)
-      qc.invalidateQueries({ queryKey: ['certificates'] })
-    },
-  })
 
-  const deleteMutation = useMutation({
-    mutationFn: (id: string) => deleteDomainApi(id),
-    onSuccess: () => {
-      qc.invalidateQueries({ queryKey: ['certificates'] })
-    },
-  })
+
+
 
   const handleInitiate = (e: React.FormEvent) => {
     e.preventDefault()
     if (isCooling(formDomain)) return
     initiateMutation.mutate(formDomain)
   }
-  const handleRetry = (domain: string) => {
-    if (isCooling(domain)) return
-    initiateMutation.mutate(domain)
-  }
+
   const handleCopy = async (text: string, key: string) => {
     await navigator.clipboard.writeText(text)
     setCopiedKey(key)
@@ -134,7 +113,7 @@ export default function Certificates() {
     setShowForm(false); setFormDomain(''); setChallenge(null); setCertificate(null)
     initiateMutation.reset(); verifyMutation.reset()
   }
-  const toggleRow = (id: string) => setExpandedRow((p) => (p === id ? null : id))
+
   const activeFlow = showForm || !!challenge || !!certificate
 
   return (
@@ -239,27 +218,16 @@ export default function Certificates() {
             <table className="table table-sm">
               <thead>
                 <tr style={{ color: 'var(--c-text-3)', fontSize: '0.7rem' }}>
-                  <th className="w-6" />
                   <th>Domain</th>
                   <th>Status</th>
                   <th>Issued</th>
                   <th>Expires</th>
-                  <th>Quick Actions</th>
                 </tr>
               </thead>
               <tbody>
                 {certs.map((cert) => (
                   <>
-                    <tr key={cert._id} className={`hover ${expandedRow === cert._id ? 'border-b-0' : ''}`}>
-                      <td className="pr-0">
-                        {cert.status === 'pending_challenge' && (
-                          <button onClick={() => toggleRow(cert._id)} className="btn btn-ghost btn-xs btn-square">
-                            {expandedRow === cert._id
-                              ? <ChevronDown className="w-3.5 h-3.5" style={{ color: 'var(--c-text-3)' }} />
-                              : <ChevronRight className="w-3.5 h-3.5" style={{ color: 'var(--c-text-3)' }} />}
-                          </button>
-                        )}
-                      </td>
+                    <tr key={cert._id} className="hover">
                       <td>
                         <Link
                           to={`/certificates/${cert._id}`}
@@ -289,53 +257,7 @@ export default function Certificates() {
                       >
                         {cert.expiryDate ? new Date(cert.expiryDate).toLocaleDateString() : '—'}
                       </td>
-                      <td>
-                        <div className="flex items-center gap-2">
-                          <RowActions
-                            cert={cert}
-                            recheckPending={recheckMutation.isPending && recheckMutation.variables === cert.domainName}
-                            retryPending={initiateMutation.isPending && initiateMutation.variables === cert.domainName}
-                            onRecheck={() => recheckMutation.mutate(cert.domainName)}
-                            onRetry={() => handleRetry(cert.domainName)}
-                          />
-                          <button
-                            onClick={() => {
-                              if (window.confirm(`Are you sure you want to delete ${cert.domainName}?`)) {
-                                deleteMutation.mutate(cert._id)
-                              }
-                            }}
-                            disabled={deleteMutation.isPending}
-                            className="btn btn-ghost btn-xs btn-square text-error"
-                            title="Delete Domain"
-                          >
-                            {deleteMutation.isPending && deleteMutation.variables === cert._id ? (
-                              <span className="loading loading-spinner loading-xs" />
-                            ) : (
-                              <Trash2 className="w-3.5 h-3.5" />
-                            )}
-                          </button>
-                        </div>
-                      </td>
                     </tr>
-
-                    {expandedRow === cert._id && cert.status === 'pending_challenge' && (
-                      <tr key={`${cert._id}-exp`}>
-                        <td colSpan={6} className="pt-0 pb-3 px-4">
-                          <ExpandedChallenge
-                            cert={cert}
-                            copiedKey={copiedKey}
-                            recheckPending={recheckMutation.isPending && recheckMutation.variables === cert.domainName}
-                            recheckError={
-                              recheckMutation.isError && recheckMutation.variables === cert.domainName
-                                ? getApiError(recheckMutation.error, 'Verification failed. DNS may not have propagated yet.')
-                                : null
-                            }
-                            onCopy={handleCopy}
-                            onRecheck={() => recheckMutation.mutate(cert.domainName)}
-                          />
-                        </td>
-                      </tr>
-                    )}
                   </>
                 ))}
               </tbody>
@@ -395,90 +317,7 @@ function StatusBadge({ status, expiring }: { status: DomainStatus; expiring?: bo
   return <span className={`badge badge-sm ${cls}`}>{label}</span>
 }
 
-function RowActions({
-  cert, recheckPending, retryPending, onRecheck, onRetry,
-}: {
-  cert: DomainRecord
-  recheckPending: boolean
-  retryPending: boolean
-  onRecheck: () => void
-  onRetry: () => void
-}) {
-  if (cert.status === 'pending_challenge') {
-    return (
-      <button onClick={onRecheck} disabled={recheckPending} className="btn btn-xs gap-1.5" style={{ background: 'var(--c-primary-soft)', color: 'var(--c-primary)', border: '1px solid var(--c-primary-mid)' }}>
-        {recheckPending ? <span className="loading loading-spinner loading-xs" /> : <RefreshCw className="w-3 h-3" />}
-        Verify Now
-      </button>
-    )
-  }
-  if (cert.status === 'failed' || cert.status === 'expired') {
-    return (
-      <button onClick={onRetry} disabled={retryPending} className="btn btn-xs gap-1.5" style={{ background: 'var(--c-error-soft)', color: 'var(--c-error)', border: '1px solid oklch(58% 0.22 25 / 0.25)' }}>
-        {retryPending ? <span className="loading loading-spinner loading-xs" /> : <RotateCcw className="w-3 h-3" />}
-        {cert.status === 'failed' ? 'Retry' : 'Renew'}
-      </button>
-    )
-  }
-  if (cert.status === 'active' && isExpiringSoon(cert.expiryDate)) {
-    return (
-      <button onClick={onRetry} disabled={retryPending} className="btn btn-xs gap-1.5" style={{ background: 'var(--c-warning-soft)', color: 'var(--c-warning)', border: '1px solid oklch(72% 0.19 80 / 0.25)' }}>
-        {retryPending ? <span className="loading loading-spinner loading-xs" /> : <RefreshCw className="w-3 h-3" />}
-        Renew
-      </button>
-    )
-  }
-  return null
-}
 
-function ExpandedChallenge({
-  cert, copiedKey, recheckPending, recheckError, onCopy, onRecheck,
-}: {
-  cert: DomainRecord
-  copiedKey: string | null
-  recheckPending: boolean
-  recheckError: string | null
-  onCopy: (text: string, key: string) => void
-  onRecheck: () => void
-}) {
-  const txtName = cert.txtRecordName ?? `_acme-challenge.${cert.domainName}`
-  const txtValue = cert.txtRecordValue ?? '(not available)'
-
-  return (
-    <div className="rounded-xl p-4 mt-1" style={{ background: 'var(--c-surface)', border: '1px solid var(--c-border-mid)' }}>
-      <p className="text-xs font-semibold uppercase tracking-wider mb-3" style={{ color: 'var(--c-warning)' }}>
-        DNS TXT Record Required
-      </p>
-      <div className="space-y-3 font-mono text-sm">
-        {[
-          { label: 'Name', value: txtName, key: `${cert._id}-name`, color: 'var(--c-info)' },
-          { label: 'Value', value: txtValue, key: `${cert._id}-value`, color: 'var(--c-purple)' },
-        ].map(({ label, value, key, color }) => (
-          <div key={key} className="flex items-start gap-2">
-            <span className="text-xs w-12 shrink-0 pt-0.5" style={{ color: 'var(--c-text-3)' }}>{label}</span>
-            <span className="flex-1 break-all text-xs" style={{ color }}>{value}</span>
-            <button onClick={() => onCopy(value, key)} className="btn btn-ghost btn-xs btn-square shrink-0">
-              {copiedKey === key ? <Check className="w-3 h-3 text-success" /> : <Copy className="w-3 h-3" style={{ color: 'var(--c-text-3)' }} />}
-            </button>
-          </div>
-        ))}
-      </div>
-      {recheckError && (
-        <div className="alert alert-error mt-3 text-xs py-2">
-          <AlertCircle className="w-3.5 h-3.5 shrink-0" />
-          <span>{recheckError}</span>
-        </div>
-      )}
-      <div className="flex justify-end mt-3">
-        <button onClick={onRecheck} disabled={recheckPending} className="btn btn-sm btn-primary gap-2">
-          {recheckPending
-            ? <><span className="loading loading-spinner loading-xs" /> Verifying…</>
-            : <><ShieldCheck className="w-3.5 h-3.5" /> Verify &amp; Issue</>}
-        </button>
-      </div>
-    </div>
-  )
-}
 
 function ChallengeCard({
   challenge, copiedKey, verifyPending, verifyError, onCopy, onVerify, onReset,

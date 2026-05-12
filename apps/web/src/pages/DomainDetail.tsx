@@ -1,7 +1,7 @@
 import { useState } from 'react'
 import { useParams, Link, useNavigate } from 'react-router-dom'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
-import { getDomainApi, initiateSslApi, recheckSslApi } from '../api/ssl'
+import { getDomainApi, initiateSslApi, recheckSslApi, deleteDomainApi } from '../api/ssl'
 import { getApiError } from '../api/errors'
 import { useCooldown } from '../hooks/useCooldown'
 import type { DomainDetail, DomainStatus, IssuedCertificate } from '../types/ssl'
@@ -17,6 +17,7 @@ import {
   RefreshCw,
   Clock,
   X,
+  Trash2,
 } from 'lucide-react'
 
 interface CertModal extends IssuedCertificate {
@@ -80,6 +81,14 @@ export default function DomainDetail() {
     },
   })
 
+  const deleteMutation = useMutation({
+    mutationFn: (id: string) => deleteDomainApi(id),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['certificates'] })
+      navigate('/certificates')
+    },
+  })
+
   const handleCopy = async (text: string, key: string) => {
     await navigator.clipboard.writeText(text)
     setCopiedKey(key)
@@ -140,11 +149,29 @@ export default function DomainDetail() {
           <ArrowLeft className="w-4 h-4" />
           Certificates
         </Link>
-        <div className="flex items-center gap-3 flex-wrap">
-          <h1 className="text-2xl font-bold font-mono" style={{ color: 'var(--c-text-1)' }}>
-            {domain.domainName}
-          </h1>
-          <StatusBadge status={domain.status} expiring={isExpiringSoon} />
+        <div className="flex items-center justify-between gap-3 flex-wrap w-full">
+          <div className="flex items-center gap-3 flex-wrap">
+            <h1 className="text-2xl font-bold font-mono" style={{ color: 'var(--c-text-1)' }}>
+              {domain.domainName}
+            </h1>
+            <StatusBadge status={domain.status} expiring={isExpiringSoon} />
+          </div>
+          <button
+            onClick={() => {
+              if (window.confirm(`Are you sure you want to delete ${domain.domainName}?`)) {
+                deleteMutation.mutate(id!)
+              }
+            }}
+            disabled={deleteMutation.isPending}
+            className="btn btn-ghost btn-sm text-error gap-2"
+          >
+            {deleteMutation.isPending ? (
+              <span className="loading loading-spinner loading-xs" />
+            ) : (
+              <Trash2 className="w-4 h-4" />
+            )}
+            Delete
+          </button>
         </div>
         <p className="text-sm mt-1" style={{ color: 'var(--c-text-2)' }}>
           SSL certificate details and management
