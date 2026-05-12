@@ -12,6 +12,11 @@ const domainSchema = z.object({
   domain: z.string().min(3).max(255),
 })
 
+/**
+ * POST /api/ssl/initiate
+ * Creates a new ACME order for the given domain. Returns DNS TXT challenge info.
+ * Also clears any stale renewalError from a previously failed auto-renewal.
+ */
 export const initiateSslHandler = factory.createHandlers(
   zValidator('json', domainSchema),
   async (c) => {
@@ -32,6 +37,10 @@ export const initiateSslHandler = factory.createHandlers(
   }
 )
 
+/**
+ * POST /api/ssl/verify
+ * Completes the ACME DNS-01 challenge and issues the certificate.
+ */
 export const verifySslHandler = factory.createHandlers(
   zValidator('json', domainSchema),
   async (c) => {
@@ -48,6 +57,11 @@ export const verifySslHandler = factory.createHandlers(
   }
 )
 
+/**
+ * POST /api/ssl/recheck
+ * Re-attempts ACME verification on an existing pending_challenge domain.
+ * Identical logic to /verify but semantically distinct for UX clarity.
+ */
 export const recheckHandler = factory.createHandlers(
   zValidator('json', domainSchema),
   async (c) => {
@@ -64,17 +78,44 @@ export const recheckHandler = factory.createHandlers(
   }
 )
 
+/**
+ * GET /api/ssl/certificates
+ * Lists all domains for the authenticated organisation.
+ * Includes renewalError so the admin panel can show the manual-retry banner.
+ */
 export const listCertificatesHandler = factory.createHandlers(async (c) => {
   const orgId = c.get('organizationId')
 
   try {
     const domains = await DomainModel.find({ organizationId: orgId })
-      .select('domainName status txtRecordName txtRecordValue expiryDate createdAt updatedAt')
+      .select('domainName status txtRecordName txtRecordValue renewalError expiryDate createdAt updatedAt')
       .sort({ createdAt: -1 })
       .lean()
 
     return ApiResponse.success(c, { certificates: domains }, 'Certificates fetched successfully.')
   } catch (error: unknown) {
     return ApiResponse.error(c, (error as Error).message, 'LIST_ERROR', 500)
+  }
+})
+
+/**
+ * GET /api/ssl/domain/:id
+ * Returns the full domain document (including certPem, renewalError, all ACME metadata)
+ * for the given domain ID, scoped to the authenticated organisation.
+ */
+export const getDomainHandler = factory.createHandlers(async (c) => {
+  const id = c.req.param('id')
+  const orgId = c.get('organizationId')
+
+  try {
+    const domain = await DomainModel.findOne({ _id: id, organizationId: orgId }).lean()
+
+    if (!domain) {
+      return ApiResponse.error(c, 'Domain not found', 'DOMAIN_NOT_FOUND', 404)
+    }
+
+    return ApiResponse.success(c, domain, 'Domain fetched.')
+  } catch (error: unknown) {
+    return ApiResponse.error(c, (error as Error).message, 'FETCH_ERROR', 500)
   }
 })

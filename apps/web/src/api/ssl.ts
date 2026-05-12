@@ -1,8 +1,18 @@
 import { apiClient } from './client'
-import type { InitiateSslResponse, VerifySslResponse, CertificatesResponse } from '../types/ssl'
+import type {
+  InitiateSslResponse,
+  VerifySslResponse,
+  CertificatesResponse,
+  DomainDetailResponse,
+} from '../types/ssl'
 
 export const getCertificatesApi = async (): Promise<CertificatesResponse> => {
   const response = await apiClient.get<CertificatesResponse>('/api/ssl/certificates')
+  return response.data
+}
+
+export const getDomainApi = async (id: string): Promise<DomainDetailResponse> => {
+  const response = await apiClient.get<DomainDetailResponse>(`/api/ssl/domain/${id}`)
   return response.data
 }
 

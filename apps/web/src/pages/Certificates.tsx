@@ -1,4 +1,5 @@
 import { useState } from 'react'
+import { Link } from 'react-router-dom'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { getCertificatesApi, initiateSslApi, verifySslApi, recheckSslApi } from '../api/ssl'
 import { getApiError } from '../api/errors'
@@ -17,6 +18,7 @@ import {
   ChevronDown,
   ChevronRight,
   X,
+  ExternalLink,
 } from 'lucide-react'
 
 interface ChallengeState {
@@ -51,10 +53,6 @@ export default function Certificates() {
   const { data, isLoading, isError } = useQuery({
     queryKey: ['certificates'],
     queryFn: getCertificatesApi,
-    refetchInterval: (query) => {
-      const certs = query.state.data?.data.certificates ?? []
-      return certs.some((c) => c.status === 'pending_challenge') ? 30_000 : false
-    },
   })
 
   const certs = data?.data.certificates ?? []
@@ -223,12 +221,6 @@ export default function Certificates() {
         <div className="card-body p-6">
           <div className="flex items-center justify-between mb-4">
             <h2 className="text-base font-bold">All Domains</h2>
-            {certs.some((c) => c.status === 'pending_challenge') && (
-              <span className="flex items-center gap-1.5 text-xs" style={{ color: 'oklch(78% 0.18 78)' }}>
-                <span className="loading loading-ring loading-xs" />
-                Auto-checking every 30s
-              </span>
-            )}
           </div>
 
           {isError && (
@@ -257,7 +249,7 @@ export default function Certificates() {
                     <th>Status</th>
                     <th>Issued</th>
                     <th>Expires</th>
-                    <th>Actions</th>
+                    <th>Quick Actions</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -277,8 +269,26 @@ export default function Certificates() {
                             </button>
                           )}
                         </td>
-                        <td className="font-mono text-sm">{cert.domainName}</td>
-                        <td><StatusBadge status={cert.status} expiring={isExpiringSoon(cert.expiryDate)} /></td>
+                        <td>
+                          <Link
+                            to={`/certificates/${cert._id}`}
+                            className="flex items-center gap-1.5 font-mono text-sm hover:underline"
+                            style={{ color: 'oklch(74% 0.20 196)' }}
+                          >
+                            {cert.domainName}
+                            <ExternalLink className="w-3 h-3 opacity-50 shrink-0" />
+                          </Link>
+                        </td>
+                        <td>
+                          <div className="flex items-center gap-1.5">
+                            <StatusBadge status={cert.status} expiring={isExpiringSoon(cert.expiryDate)} />
+                            {cert.renewalError && (
+                              <span title={`Auto-renewal failed: ${cert.renewalError}`}>
+                                <AlertCircle className="w-3.5 h-3.5" style={{ color: 'oklch(65% 0.22 25)' }} />
+                              </span>
+                            )}
+                          </div>
+                        </td>
                         <td className="text-sm" style={{ color: 'oklch(52% 0.015 265)' }}>
                           {new Date(cert.createdAt).toLocaleDateString()}
                         </td>

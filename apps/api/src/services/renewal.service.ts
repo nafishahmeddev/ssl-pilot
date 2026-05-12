@@ -106,7 +106,16 @@ async function initiateRenewalOrders(): Promise<RenewalResult> {
       log.info({ adminEmail: admin.email }, 'Renewal: ACME order initiated — DNS update required in admin panel')
       result.succeeded++
     } catch (err) {
-      log.error({ err }, 'Renewal: failed to initiate ACME order')
+      const message = err instanceof Error ? err.message : String(err)
+      log.error({ err }, 'Renewal: failed to initiate ACME order — marking for manual intervention')
+
+      // Persist the error so the admin panel can surface it and prompt the user
+      // to trigger renewal manually. Only the user (via admin panel) can clear this.
+      await DomainModel.findOneAndUpdate(
+        { _id: domain._id },
+        { $set: { renewalError: message, renewalFailedAt: new Date() } }
+      ).catch((dbErr: unknown) => log.error({ dbErr }, 'Renewal: failed to persist renewalError'))
+
       result.failed++
     }
   }

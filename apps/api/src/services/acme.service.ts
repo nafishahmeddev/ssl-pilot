@@ -96,6 +96,9 @@ export class AcmeService {
           txtRecordName: txtName,
           txtRecordValue: keyAuth,
         },
+        // Clear any stale auto-renewal error so the admin panel stops showing
+        // the manual-retry banner once a new order is successfully in-flight.
+        $unset: { renewalError: 1, renewalFailedAt: 1 },
       },
       { upsert: true, new: true }
     )
