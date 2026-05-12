@@ -1,8 +1,9 @@
-import { useState } from 'react'
+import { useState, useRef, useCallback } from 'react'
 import { Link } from 'react-router-dom'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { getCertificatesApi, initiateSslApi, verifySslApi, recheckSslApi } from '../api/ssl'
 import { getApiError } from '../api/errors'
+import { useCooldown } from '../hooks/useCooldown'
 import type { DomainRecord, DomainStatus, IssuedCertificate } from '../types/ssl'
 import {
   Globe,
@@ -42,6 +43,28 @@ export default function Certificates() {
   const [modalCert, setModalCert]       = useState<CertState | null>(null)
   const [copiedKey, setCopiedKey]       = useState<string | null>(null)
 
+  // Per-domain cooldown tracking (60s verify, 45s initiate)
+  const cooldownsRef  = useRef<Map<string, number>>(new Map())
+  const [, forceRender] = useState(0)
+
+  const startDomainCooldown = useCallback((domain: string, ms: number) => {
+    cooldownsRef.current.set(domain, Date.now() + ms)
+    forceRender((n) => n + 1)
+    setTimeout(() => {
+      cooldownsRef.current.delete(domain)
+      forceRender((n) => n + 1)
+    }, ms)
+  }, [])
+
+  const isCooling     = useCallback((domain: string) => (cooldownsRef.current.get(domain) ?? 0) > Date.now(), [])
+  const secondsLeft   = useCallback((domain: string) => {
+    const endsAt = cooldownsRef.current.get(domain) ?? 0
+    return Math.max(0, Math.ceil((endsAt - Date.now()) / 1000))
+  }, [])
+
+  // Cooldown for the new-certificate flow (verify step uses global verify CD)
+  const verifyCD = useCooldown(60_000)
+
   const { data, isLoading, isError } = useQuery({
     queryKey: ['certificates'],
     queryFn: getCertificatesApi,
@@ -50,6 +73,7 @@ export default function Certificates() {
 
   const initiateMutation = useMutation({
     mutationFn: (d: string) => initiateSslApi(d),
+    onSettled: (_, __, domain) => startDomainCooldown(domain, 45_000),
     onSuccess: (res, domain) => {
       setChallenge({ domain, txtName: res.data.txtName, txtValue: res.data.txtValue })
       setCertificate(null)
@@ -61,6 +85,7 @@ export default function Certificates() {
 
   const verifyMutation = useMutation({
     mutationFn: (d: string) => verifySslApi(d),
+    onSettled: () => verifyCD.start(),
     onSuccess: (res) => {
       setCertificate({ domain: challenge!.domain, ...res.data })
       setChallenge(null)
@@ -70,6 +95,7 @@ export default function Certificates() {
 
   const recheckMutation = useMutation({
     mutationFn: (d: string) => recheckSslApi(d),
+    onSettled: (_, __, domain) => startDomainCooldown(domain, 60_000),
     onSuccess: (res, domain) => {
       setModalCert({ domain, ...res.data })
       setExpandedRow(null)
@@ -77,8 +103,15 @@ export default function Certificates() {
     },
   })
 
-  const handleInitiate = (e: React.FormEvent) => { e.preventDefault(); initiateMutation.mutate(formDomain) }
-  const handleRetry    = (domain: string) => initiateMutation.mutate(domain)
+  const handleInitiate = (e: React.FormEvent) => {
+    e.preventDefault()
+    if (isCooling(formDomain)) return
+    initiateMutation.mutate(formDomain)
+  }
+  const handleRetry = (domain: string) => {
+    if (isCooling(domain)) return
+    initiateMutation.mutate(domain)
+  }
   const handleCopy     = async (text: string, key: string) => {
     await navigator.clipboard.writeText(text)
     setCopiedKey(key)

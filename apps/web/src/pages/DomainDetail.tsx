@@ -3,6 +3,7 @@ import { useParams, Link, useNavigate } from 'react-router-dom'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { getDomainApi, initiateSslApi, recheckSslApi } from '../api/ssl'
 import { getApiError } from '../api/errors'
+import { useCooldown } from '../hooks/useCooldown'
 import type { DomainDetail, DomainStatus, IssuedCertificate } from '../types/ssl'
 import {
   ArrowLeft,
@@ -15,16 +16,12 @@ import {
   RotateCcw,
   RefreshCw,
   Clock,
-  Calendar,
-  Globe,
   X,
 } from 'lucide-react'
 
 interface CertModal extends IssuedCertificate {
   domain: string
 }
-
-// ── Helpers ────────────────────────────────────────────────────────────────────
 
 function daysUntil(isoDate?: string): number | null {
   if (!isoDate) return null
@@ -36,7 +33,14 @@ function fmt(isoDate?: string): string {
   return new Date(isoDate).toLocaleDateString(undefined, { year: 'numeric', month: 'short', day: 'numeric' })
 }
 
-// ── Component ──────────────────────────────────────────────────────────────────
+function certLifetimePct(createdAt: string, expiryDate?: string): number | null {
+  if (!expiryDate) return null
+  const start  = new Date(createdAt).getTime()
+  const end    = new Date(expiryDate).getTime()
+  const now    = Date.now()
+  if (end <= start) return null
+  return Math.min(100, Math.max(0, Math.round(((now - start) / (end - start)) * 100)))
+}
 
 export default function DomainDetail() {
   const { id } = useParams<{ id: string }>()
@@ -46,6 +50,9 @@ export default function DomainDetail() {
   const [copiedKey, setCopiedKey] = useState<string | null>(null)
   const [certModal, setCertModal] = useState<CertModal | null>(null)
 
+  const initiateCD = useCooldown(45_000)
+  const recheckCD  = useCooldown(60_000)
+
   const { data, isLoading, isError } = useQuery({
     queryKey: ['domain', id],
     queryFn: () => getDomainApi(id!),
@@ -54,10 +61,9 @@ export default function DomainDetail() {
 
   const domain = data?.data
 
-  // ── Mutations ──────────────────────────────────────────────────────────────
-
   const initiateMutation = useMutation({
     mutationFn: (d: string) => initiateSslApi(d),
+    onSettled: () => initiateCD.start(),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ['domain', id] })
       qc.invalidateQueries({ queryKey: ['certificates'] })
@@ -66,14 +72,13 @@ export default function DomainDetail() {
 
   const recheckMutation = useMutation({
     mutationFn: (d: string) => recheckSslApi(d),
+    onSettled: () => recheckCD.start(),
     onSuccess: (res) => {
       setCertModal({ domain: domain!.domainName, ...res.data })
       qc.invalidateQueries({ queryKey: ['domain', id] })
       qc.invalidateQueries({ queryKey: ['certificates'] })
     },
   })
-
-  // ── Handlers ───────────────────────────────────────────────────────────────
 
   const handleCopy = async (text: string, key: string) => {
     await navigator.clipboard.writeText(text)
@@ -85,13 +90,9 @@ export default function DomainDetail() {
     const blob = new Blob([content], { type: 'text/plain' })
     const url = URL.createObjectURL(blob)
     const a = document.createElement('a')
-    a.href = url
-    a.download = filename
-    a.click()
+    a.href = url; a.download = filename; a.click()
     URL.revokeObjectURL(url)
   }
-
-  // ── Loading / error states ─────────────────────────────────────────────────
 
   if (isLoading) {
     return (
@@ -115,16 +116,21 @@ export default function DomainDetail() {
     )
   }
 
-  const days = daysUntil(domain.expiryDate)
+  const days           = daysUntil(domain.expiryDate)
   const isExpiringSoon = days !== null && days >= 0 && days <= 30
-  const hasExpired = days !== null && days < 0
+  const hasExpired     = days !== null && days < 0
+  const lifetimePct    = certLifetimePct(domain.createdAt, domain.expiryDate)
 
-  // ── Render ─────────────────────────────────────────────────────────────────
+  const daysColor = hasExpired
+    ? 'var(--c-error)'
+    : isExpiringSoon
+    ? 'var(--c-warning)'
+    : 'var(--c-success)'
 
   return (
-    <main className="flex-1 p-5 lg:p-8 max-w-5xl w-full mx-auto space-y-6">
+    <main className="flex-1 p-5 lg:p-8 max-w-5xl w-full mx-auto space-y-5">
 
-      {/* Breadcrumb */}
+      {/* Breadcrumb + header */}
       <div className="pt-1">
         <Link
           to="/certificates"
@@ -134,68 +140,73 @@ export default function DomainDetail() {
           <ArrowLeft className="w-4 h-4" />
           Certificates
         </Link>
-
-        <div className="flex items-start gap-3">
-          <div>
-            <div className="flex items-center gap-3 flex-wrap">
-              <h1 className="text-2xl font-bold font-mono" style={{ color: 'var(--c-text-1)' }}>{domain.domainName}</h1>
-              <StatusBadge status={domain.status} expiring={isExpiringSoon} />
-            </div>
-            <p className="text-sm mt-1" style={{ color: 'var(--c-text-2)' }}>
-              SSL certificate details and management
-            </p>
-          </div>
+        <div className="flex items-center gap-3 flex-wrap">
+          <h1 className="text-2xl font-bold font-mono" style={{ color: 'var(--c-text-1)' }}>
+            {domain.domainName}
+          </h1>
+          <StatusBadge status={domain.status} expiring={isExpiringSoon} />
         </div>
+        <p className="text-sm mt-1" style={{ color: 'var(--c-text-2)' }}>
+          SSL certificate details and management
+        </p>
       </div>
 
-      {/* Info Grid */}
+      {/* ── Bento Info Grid ── */}
       <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
-        {[
-          {
-            icon: Calendar,
-            label: 'Issued',
-            value: fmt(domain.createdAt),
-            color: 'var(--c-primary)',
-          },
-          {
-            icon: Clock,
-            label: 'Expires',
-            value: fmt(domain.expiryDate),
-            color: hasExpired
-              ? 'var(--c-error)'
-              : isExpiringSoon
-              ? 'var(--c-warning)'
-              : 'var(--c-text-2)',
-          },
-          {
-            icon: RefreshCw,
-            label: 'Days Left',
-            value: days === null ? '—' : days < 0 ? 'Expired' : `${days}d`,
-            color: hasExpired
-              ? 'var(--c-error)'
-              : isExpiringSoon
-              ? 'var(--c-warning)'
-              : 'var(--c-success)',
-          },
-          {
-            icon: Globe,
-            label: 'Last Updated',
-            value: fmt(domain.updatedAt),
-            color: 'var(--c-text-2)',
-          },
-        ].map(({ icon: Icon, label, value, color }) => (
-          <div
-            key={label}
-            className="rounded-2xl p-4 flex flex-col gap-2"
-            style={{ background: 'var(--c-card)', border: '1px solid var(--c-border)' }}
-          >
-            <div className="flex items-center gap-2" style={{ color: 'var(--c-text-3)' }}>
-              <Icon className="w-3.5 h-3.5" />
-              <span className="text-xs font-semibold uppercase tracking-wider">{label}</span>
-            </div>
-            <p className="font-semibold text-sm" style={{ color }}>{value}</p>
+
+        {/* Featured: Days Left */}
+        <div
+          className="col-span-2 rounded-2xl p-5 flex flex-col gap-3"
+          style={{ background: 'var(--c-card)', border: '1px solid var(--c-border)' }}
+        >
+          <div className="flex items-center justify-between">
+            <p className="text-xs font-semibold uppercase tracking-widest" style={{ color: 'var(--c-text-3)' }}>
+              Days Remaining
+            </p>
+            <Clock className="w-4 h-4" style={{ color: 'var(--c-text-3)' }} />
           </div>
-        ))}
+
+          <p className="text-5xl font-bold leading-none" style={{ color: daysColor }}>
+            {days === null ? '—' : days < 0 ? 'Exp.' : days}
+          </p>
+
+          {lifetimePct !== null && !hasExpired && (
+            <div>
+              <div className="h-1.5 rounded-full overflow-hidden" style={{ background: 'var(--c-surface-2)' }}>
+                <div
+                  className="h-full rounded-full transition-all"
+                  style={{ width: `${lifetimePct}%`, background: daysColor }}
+                />
+              </div>
+              <p className="text-xs mt-1.5" style={{ color: 'var(--c-text-3)' }}>
+                {lifetimePct}% of cert lifetime used
+              </p>
+            </div>
+          )}
+
+          {hasExpired && (
+            <p className="text-xs" style={{ color: 'var(--c-error)' }}>Certificate has expired</p>
+          )}
+        </div>
+
+        {/* Issued */}
+        <div
+          className="rounded-2xl p-5 flex flex-col gap-2"
+          style={{ background: 'var(--c-card)', border: '1px solid var(--c-border)' }}
+        >
+          <p className="text-xs font-semibold uppercase tracking-widest" style={{ color: 'var(--c-text-3)' }}>Issued</p>
+          <p className="text-sm font-semibold" style={{ color: 'var(--c-primary)' }}>{fmt(domain.createdAt)}</p>
+        </div>
+
+        {/* Expires */}
+        <div
+          className="rounded-2xl p-5 flex flex-col gap-2"
+          style={{ background: 'var(--c-card)', border: '1px solid var(--c-border)' }}
+        >
+          <p className="text-xs font-semibold uppercase tracking-widest" style={{ color: 'var(--c-text-3)' }}>Expires</p>
+          <p className="text-sm font-semibold" style={{ color: daysColor }}>{fmt(domain.expiryDate)}</p>
+        </div>
+
       </div>
 
       {/* ── Auto-Renewal Failure Banner ── */}
@@ -231,7 +242,7 @@ export default function DomainDetail() {
           </div>
           <button
             onClick={() => initiateMutation.mutate(domain.domainName)}
-            disabled={initiateMutation.isPending}
+            disabled={initiateMutation.isPending || initiateCD.isCooling}
             className="btn btn-sm gap-2"
             style={{
               background: 'var(--c-error-soft)',
@@ -242,7 +253,9 @@ export default function DomainDetail() {
             {initiateMutation.isPending
               ? <span className="loading loading-spinner loading-xs" />
               : <RotateCcw className="w-3.5 h-3.5" />}
-            Trigger Manual Renewal
+            {initiateCD.isCooling
+              ? `Wait ${initiateCD.secondsLeft}s`
+              : 'Trigger Manual Renewal'}
           </button>
           {initiateMutation.isError && (
             <p className="text-xs mt-2" style={{ color: 'var(--c-error)' }}>
@@ -327,21 +340,23 @@ export default function DomainDetail() {
             <div className="flex flex-col sm:flex-row gap-3 justify-between mt-4">
               <button
                 onClick={() => initiateMutation.mutate(domain.domainName)}
-                disabled={initiateMutation.isPending}
+                disabled={initiateMutation.isPending || initiateCD.isCooling}
                 className="btn btn-ghost btn-sm gap-2"
               >
                 {initiateMutation.isPending
                   ? <span className="loading loading-spinner loading-xs" />
                   : <RotateCcw className="w-3.5 h-3.5" />}
-                Re-initiate Order
+                {initiateCD.isCooling ? `Wait ${initiateCD.secondsLeft}s` : 'Re-initiate Order'}
               </button>
               <button
                 onClick={() => recheckMutation.mutate(domain.domainName)}
-                disabled={recheckMutation.isPending}
+                disabled={recheckMutation.isPending || recheckCD.isCooling}
                 className="btn btn-success gap-2"
               >
                 {recheckMutation.isPending
                   ? <><span className="loading loading-spinner loading-sm" /> Verifying…</>
+                  : recheckCD.isCooling
+                  ? <><RefreshCw className="w-4 h-4" /> Wait {recheckCD.secondsLeft}s</>
                   : <><ShieldCheck className="w-4 h-4" /> Verify &amp; Issue</>}
               </button>
             </div>
@@ -366,9 +381,7 @@ export default function DomainDetail() {
                 </div>
                 <div>
                   <p className="font-semibold" style={{ color: 'var(--c-text-1)' }}>Certificate</p>
-                  <p className="text-xs" style={{ color: 'var(--c-text-2)' }}>
-                    Last issued certificate (PEM)
-                  </p>
+                  <p className="text-xs" style={{ color: 'var(--c-text-2)' }}>Last issued certificate (PEM)</p>
                 </div>
               </div>
               <div className="flex gap-1">
@@ -424,13 +437,17 @@ export default function DomainDetail() {
             </p>
             <button
               onClick={() => initiateMutation.mutate(domain.domainName)}
-              disabled={initiateMutation.isPending}
+              disabled={initiateMutation.isPending || initiateCD.isCooling}
               className="btn btn-primary btn-sm gap-2"
             >
               {initiateMutation.isPending
                 ? <span className="loading loading-spinner loading-xs" />
                 : <RotateCcw className="w-3.5 h-3.5" />}
-              {domain.status === 'failed' ? 'Retry Issuance' : 'Renew Certificate'}
+              {initiateCD.isCooling
+                ? `Wait ${initiateCD.secondsLeft}s`
+                : domain.status === 'failed'
+                ? 'Retry Issuance'
+                : 'Renew Certificate'}
             </button>
             {initiateMutation.isError && (
               <p className="text-xs mt-2" style={{ color: 'var(--c-error)' }}>
@@ -441,7 +458,6 @@ export default function DomainDetail() {
         </div>
       )}
 
-      {/* ── Certificate Modal (after verify/recheck) ── */}
       {certModal && (
         <CertModal
           cert={certModal}
@@ -468,22 +484,18 @@ function StatusBadge({ status, expiring }: { status: DomainStatus; expiring?: bo
     )
   }
   const map: Record<DomainStatus, { label: string; cls: string }> = {
-    active: { label: 'Active', cls: 'badge-success' },
-    pending: { label: 'Pending', cls: 'badge-neutral' },
+    active:            { label: 'Active',      cls: 'badge-success' },
+    pending:           { label: 'Pending',     cls: 'badge-neutral' },
     pending_challenge: { label: 'DNS Pending', cls: 'badge-warning' },
-    expired: { label: 'Expired', cls: 'badge-error' },
-    failed: { label: 'Failed', cls: 'badge-error' },
+    expired:           { label: 'Expired',     cls: 'badge-error'   },
+    failed:            { label: 'Failed',      cls: 'badge-error'   },
   }
   const { label, cls } = map[status]
   return <span className={`badge ${cls}`}>{label}</span>
 }
 
 function CertModal({
-  cert,
-  copiedKey,
-  onCopy,
-  onDownload,
-  onClose,
+  cert, copiedKey, onCopy, onDownload, onClose,
 }: {
   cert: CertModal
   copiedKey: string | null
@@ -520,15 +532,12 @@ function CertModal({
         </p>
 
         {[
-          { label: 'Certificate', value: cert.cert, key: 'modal-cert', filename: `${cert.domain}.crt`, color: 'var(--c-info)' },
-          { label: 'Private Key', value: cert.key, key: 'modal-key', filename: `${cert.domain}.key`, color: 'var(--c-purple)' },
+          { label: 'Certificate', value: cert.cert, key: 'modal-cert', filename: `${cert.domain}.crt`, color: 'var(--c-info)'   },
+          { label: 'Private Key', value: cert.key,  key: 'modal-key',  filename: `${cert.domain}.key`, color: 'var(--c-purple)' },
         ].map(({ label, value, key, filename, color }) => (
           <div key={key} className="mb-4">
             <div className="flex items-center justify-between mb-2">
-              <span
-                className="text-xs font-semibold uppercase tracking-wider"
-                style={{ color: 'var(--c-text-2)' }}
-              >
+              <span className="text-xs font-semibold uppercase tracking-wider" style={{ color: 'var(--c-text-2)' }}>
                 {label}
               </span>
               <div className="flex gap-1">
@@ -544,11 +553,7 @@ function CertModal({
             </div>
             <div
               className="rounded-xl p-4 font-mono text-xs overflow-x-auto"
-              style={{
-                background: 'var(--c-code-bg)',
-                border: '1px solid var(--c-border)',
-                color,
-              }}
+              style={{ background: 'var(--c-code-bg)', border: '1px solid var(--c-border)', color }}
             >
               <pre className="whitespace-pre-wrap break-all">
                 {value.trim().split('\n').slice(0, 4).join('\n')}

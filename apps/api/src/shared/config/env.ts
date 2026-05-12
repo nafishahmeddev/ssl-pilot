@@ -7,7 +7,6 @@ const envSchema = z.object({
   PORT: z.string().regex(/^\d+$/).default('3000').transform(Number),
   NODE_ENV: z.enum(['development', 'production', 'test']).default('development'),
   MONGODB_URI: z.string().url('Invalid MongoDB URI').default('mongodb://localhost:27017/ssl-pilot'),
-  ACME_EMAIL: z.string().email('Invalid ACME email'),
   ACME_STAGING: z.string().default('true').transform((v) => v === 'true'),
   VAULT_MASTER_KEY: z.string().length(64, 'Vault master key must be 64 hex characters'),
   JWT_ACCESS_SECRET: z.string().default('access-secret-change-me-in-prod'),
