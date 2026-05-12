@@ -1,64 +1,112 @@
 @import "tailwindcss";
 @plugin "daisyui";
 
-/* ─── Custom DaisyUI Theme ────────────────────────────────────────────────── */
+/* ─── Google Sans Flex ────────────────────────────────────────────────────── */
+@import url('https://fonts.googleapis.com/css2?family=Google+Sans+Flex:wght@100..900&display=swap');
+
+/* ─── DaisyUI Light Emerald Theme ────────────────────────────────────────── */
 @plugin "daisyui/theme" {
   name: "ssl-pilot";
   default: true;
-  color-scheme: dark;
+  color-scheme: light;
 
-  /* Primary – Electric Indigo */
-  --color-primary: oklch(62% 0.26 265);
-  --color-primary-content: oklch(98% 0.01 265);
+  /* Primary – Emerald */
+  --color-primary:         oklch(60% 0.17 158);
+  --color-primary-content: oklch(100% 0 0);
 
-  /* Secondary – Soft Violet */
-  --color-secondary: oklch(64% 0.22 300);
-  --color-secondary-content: oklch(98% 0.01 300);
+  /* Secondary – Teal */
+  --color-secondary:         oklch(62% 0.14 185);
+  --color-secondary-content: oklch(100% 0 0);
 
-  /* Accent – Cyan */
-  --color-accent: oklch(74% 0.20 196);
-  --color-accent-content: oklch(15% 0.05 196);
+  /* Accent – Lime */
+  --color-accent:         oklch(76% 0.17 130);
+  --color-accent-content: oklch(18% 0.04 130);
 
-  /* Neutral */
-  --color-neutral: oklch(32% 0.03 265);
-  --color-neutral-content: oklch(88% 0.01 265);
+  /* Neutral – slate */
+  --color-neutral:         oklch(30% 0.02 158);
+  --color-neutral-content: oklch(96% 0.004 158);
 
-  /* Base surfaces — deep midnight blue */
-  --color-base-100: oklch(16% 0.025 265);
-  --color-base-200: oklch(20% 0.025 265);
-  --color-base-300: oklch(25% 0.025 265);
-  --color-base-content: oklch(88% 0.015 265);
+  /* Base – clean light */
+  --color-base-100:     oklch(100%    0       0);
+  --color-base-200:     oklch(96.5%  0.006  158);
+  --color-base-300:     oklch(91%    0.01   158);
+  --color-base-content: oklch(16%    0.01   158);
 
   /* Semantic */
-  --color-info:    oklch(70% 0.17 220);
-  --color-success: oklch(70% 0.20 150);
-  --color-warning: oklch(78% 0.18  78);
-  --color-error:   oklch(65% 0.22  25);
+  --color-info:    oklch(60% 0.18 245);
+  --color-success: oklch(62% 0.18 158);
+  --color-warning: oklch(72% 0.19  80);
+  --color-error:   oklch(58% 0.22  25);
 
-  --color-info-content:    oklch(15% 0.05 220);
-  --color-success-content: oklch(15% 0.05 150);
-  --color-warning-content: oklch(15% 0.05  78);
-  --color-error-content:   oklch(98% 0.01  25);
+  --color-info-content:    oklch(100% 0 0);
+  --color-success-content: oklch(100% 0 0);
+  --color-warning-content: oklch(20%  0.05 80);
+  --color-error-content:   oklch(100% 0 0);
 
-  --radius-btn:      0.5rem;
-  --radius-field:    0.5rem;
-  --radius-badge:    0.375rem;
-  --radius-selector: 0.5rem;
-  --radius-box:      0.75rem;
-  --radius-tab:      0.5rem;
+  --radius-btn:      0.625rem;
+  --radius-field:    0.625rem;
+  --radius-badge:    0.5rem;
+  --radius-selector: 0.625rem;
+  --radius-box:      0.875rem;
+  --radius-tab:      0.625rem;
+}
+
+/* ─── Design Token Properties ─────────────────────────────────────────────── */
+/*
+ * Single source of truth for all inline color values.
+ * Components reference these via var(--c-*).
+ */
+:root {
+  /* Surfaces */
+  --c-page:       oklch(96.5%  0.006  158);
+  --c-card:       oklch(100%   0      0);
+  --c-surface:    oklch(96%    0.007  158);
+  --c-surface-2:  oklch(93%    0.01   158);
+  --c-code-bg:    oklch(97%    0.004  158);
+
+  /* Borders */
+  --c-border:       oklch(91%  0.01   158);
+  --c-border-mid:   oklch(86%  0.012  158);
+  --c-border-strong:oklch(80%  0.015  158);
+
+  /* Text */
+  --c-text-1: oklch(16%  0.01   158);
+  --c-text-2: oklch(48%  0.01   158);
+  --c-text-3: oklch(64%  0.008  158);
+
+  /* Brand – Emerald */
+  --c-primary:      oklch(60%  0.17   158);
+  --c-primary-soft: oklch(60%  0.17   158 / 0.10);
+  --c-primary-mid:  oklch(60%  0.17   158 / 0.18);
+
+  /* Success / Active */
+  --c-success:      oklch(62%  0.18   158);
+  --c-success-soft: oklch(62%  0.18   158 / 0.10);
+
+  /* Warning */
+  --c-warning:      oklch(72%  0.19    80);
+  --c-warning-soft: oklch(72%  0.19    80 / 0.10);
+
+  /* Error */
+  --c-error:        oklch(58%  0.22    25);
+  --c-error-soft:   oklch(58%  0.22    25 / 0.10);
+
+  /* Info / Blue */
+  --c-info:         oklch(60%  0.18   245);
+  --c-info-soft:    oklch(60%  0.18   245 / 0.10);
+
+  /* Purple accent */
+  --c-purple:       oklch(62%  0.18   280);
+  --c-purple-soft:  oklch(62%  0.18   280 / 0.10);
 }
 
 /* ─── Typography ──────────────────────────────────────────────────────────── */
 :root {
-  /*
-   * Apply Google Sans Flex with ROND=100 via font-variation-settings.
-   * ROND is the "roundedness" axis unique to Google Sans Flex.
-   */
   --font-sans: "Google Sans Flex", ui-sans-serif, system-ui, sans-serif;
 
   font-family: var(--font-sans);
   font-variation-settings:
-    "ROND" 100,   /* Maximum roundedness */
+    "ROND" 100,
     "wght" 400,
     "wdth" 100,
     "opsz" 14,
@@ -70,11 +118,10 @@
   -moz-osx-font-smoothing: grayscale;
 }
 
-/* Headings get a slightly heavier weight */
 h1, h2, h3, h4, h5, h6 {
   font-variation-settings:
     "ROND" 100,
-    "wght" 600,
+    "wght" 650,
     "wdth" 100,
     "opsz" 20,
     "GRAD" 0,
@@ -83,7 +130,7 @@ h1, h2, h3, h4, h5, h6 {
 
 /* ─── Global base ─────────────────────────────────────────────────────────── */
 body {
-  background-color: oklch(16% 0.025 265);
+  background-color: var(--c-page);
   min-height: 100dvh;
   font-family: var(--font-sans);
 }
@@ -91,31 +138,5 @@ body {
 /* ─── Scrollbar ───────────────────────────────────────────────────────────── */
 ::-webkit-scrollbar { width: 5px; height: 5px; }
 ::-webkit-scrollbar-track { background: transparent; }
-::-webkit-scrollbar-thumb { background: oklch(35% 0.03 265); border-radius: 4px; }
-::-webkit-scrollbar-thumb:hover { background: oklch(45% 0.05 265); }
-
-/* ─── Auth brand panel orb animations ────────────────────────────────────── */
-@keyframes orb-float-1 {
-  0%, 100% { transform: translate(0, 0) scale(1); }
-  50%       { transform: translate(20px, -30px) scale(1.06); }
-}
-@keyframes orb-float-2 {
-  0%, 100% { transform: translate(0, 0) scale(1); }
-  50%       { transform: translate(-25px, 20px) scale(0.94); }
-}
-@keyframes orb-float-3 {
-  0%, 100% { transform: translate(0, 0) scale(1); }
-  33%       { transform: translate(15px, 15px) scale(1.03); }
-  66%       { transform: translate(-10px, -20px) scale(0.97); }
-}
-.orb-float-1 { animation: orb-float-1 12s ease-in-out infinite; }
-.orb-float-2 { animation: orb-float-2 15s ease-in-out infinite; }
-.orb-float-3 { animation: orb-float-3 18s ease-in-out infinite; }
-
-/* ─── Gradient text utility ───────────────────────────────────────────────── */
-.text-gradient-brand {
-  background: linear-gradient(135deg, oklch(62% 0.26 265), oklch(64% 0.22 300), oklch(74% 0.20 196));
-  -webkit-background-clip: text;
-  -webkit-text-fill-color: transparent;
-  background-clip: text;
-}
+::-webkit-scrollbar-thumb { background: var(--c-border-mid); border-radius: 4px; }
+::-webkit-scrollbar-thumb:hover { background: var(--c-border-strong); }
