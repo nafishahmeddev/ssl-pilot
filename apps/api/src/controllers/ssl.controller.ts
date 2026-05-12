@@ -119,3 +119,24 @@ export const getDomainHandler = factory.createHandlers(async (c) => {
     return ApiResponse.error(c, (error as Error).message, 'FETCH_ERROR', 500)
   }
 })
+
+/**
+ * DELETE /api/ssl/domain/:id
+ * Deletes a domain document.
+ */
+export const deleteDomainHandler = factory.createHandlers(async (c) => {
+  const id = c.req.param('id')
+  const orgId = c.get('organizationId')
+
+  try {
+    const domain = await DomainModel.findOneAndDelete({ _id: id, organizationId: orgId })
+
+    if (!domain) {
+      return ApiResponse.error(c, 'Domain not found or unauthorized', 'DELETE_ERROR', 404)
+    }
+
+    return ApiResponse.success(c, null, 'Domain deleted successfully.')
+  } catch (error: unknown) {
+    return ApiResponse.error(c, (error as Error).message, 'DELETE_ERROR', 500)
+  }
+})

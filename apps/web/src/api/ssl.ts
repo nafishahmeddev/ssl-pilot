@@ -30,3 +30,7 @@ export const recheckSslApi = async (domain: string): Promise<VerifySslResponse> 
   const response = await apiClient.post<VerifySslResponse>('/api/ssl/recheck', { domain })
   return response.data
 }
+
+export const deleteDomainApi = async (id: string): Promise<void> => {
+  await apiClient.delete(`/api/ssl/domain/${id}`)
+}

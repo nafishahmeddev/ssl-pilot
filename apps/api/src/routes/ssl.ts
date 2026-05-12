@@ -6,6 +6,7 @@ import {
   recheckHandler,
   listCertificatesHandler,
   getDomainHandler,
+  deleteDomainHandler,
 } from '@src/controllers/ssl.controller'
 import type { Env } from '@src/app'
 
@@ -15,6 +16,7 @@ router.use('*', authMiddleware)
 
 router.get('/certificates', ...listCertificatesHandler)
 router.get('/domain/:id', ...getDomainHandler)
+router.delete('/domain/:id', ...deleteDomainHandler)
 router.post('/initiate', ...initiateSslHandler)
 router.post('/verify', ...verifySslHandler)
 router.post('/recheck', ...recheckHandler)

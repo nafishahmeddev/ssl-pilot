@@ -1,7 +1,7 @@
 import { useState, useRef, useCallback } from 'react'
 import { Link } from 'react-router-dom'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
-import { getCertificatesApi, initiateSslApi, verifySslApi, recheckSslApi } from '../api/ssl'
+import { getCertificatesApi, initiateSslApi, verifySslApi, recheckSslApi, deleteDomainApi } from '../api/ssl'
 import { getApiError } from '../api/errors'
 import { useCooldown } from '../hooks/useCooldown'
 import type { DomainRecord, DomainStatus, IssuedCertificate } from '../types/ssl'
@@ -20,6 +20,7 @@ import {
   ChevronRight,
   X,
   ExternalLink,
+  Trash2,
 } from 'lucide-react'
 
 interface ChallengeState { domain: string; txtName: string; txtValue: string }
@@ -99,6 +100,13 @@ export default function Certificates() {
     onSuccess: (res, domain) => {
       setModalCert({ domain, ...res.data })
       setExpandedRow(null)
+      qc.invalidateQueries({ queryKey: ['certificates'] })
+    },
+  })
+
+  const deleteMutation = useMutation({
+    mutationFn: (id: string) => deleteDomainApi(id),
+    onSuccess: () => {
       qc.invalidateQueries({ queryKey: ['certificates'] })
     },
   })
@@ -282,13 +290,31 @@ export default function Certificates() {
                         {cert.expiryDate ? new Date(cert.expiryDate).toLocaleDateString() : '—'}
                       </td>
                       <td>
-                        <RowActions
-                          cert={cert}
-                          recheckPending={recheckMutation.isPending && recheckMutation.variables === cert.domainName}
-                          retryPending={initiateMutation.isPending && initiateMutation.variables === cert.domainName}
-                          onRecheck={() => recheckMutation.mutate(cert.domainName)}
-                          onRetry={() => handleRetry(cert.domainName)}
-                        />
+                        <div className="flex items-center gap-2">
+                          <RowActions
+                            cert={cert}
+                            recheckPending={recheckMutation.isPending && recheckMutation.variables === cert.domainName}
+                            retryPending={initiateMutation.isPending && initiateMutation.variables === cert.domainName}
+                            onRecheck={() => recheckMutation.mutate(cert.domainName)}
+                            onRetry={() => handleRetry(cert.domainName)}
+                          />
+                          <button
+                            onClick={() => {
+                              if (window.confirm(`Are you sure you want to delete ${cert.domainName}?`)) {
+                                deleteMutation.mutate(cert._id)
+                              }
+                            }}
+                            disabled={deleteMutation.isPending}
+                            className="btn btn-ghost btn-xs btn-square text-error"
+                            title="Delete Domain"
+                          >
+                            {deleteMutation.isPending && deleteMutation.variables === cert._id ? (
+                              <span className="loading loading-spinner loading-xs" />
+                            ) : (
+                              <Trash2 className="w-3.5 h-3.5" />
+                            )}
+                          </button>
+                        </div>
                       </td>
                     </tr>
 
