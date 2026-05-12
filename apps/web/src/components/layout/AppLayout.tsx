@@ -1,3 +1,4 @@
+import { Suspense } from 'react'
 import { Outlet, NavLink, useNavigate } from 'react-router-dom'
 import { useSelector } from '@tanstack/react-store'
 import { authStore, setAccessToken } from '../../store/auth'
@@ -51,7 +52,13 @@ export default function AppLayout() {
           </div>
         </header>
 
-        <Outlet />
+        <Suspense fallback={
+          <div className="flex-1 flex items-center justify-center">
+            <span className="loading loading-spinner loading-lg" style={{ color: 'var(--c-primary)' }}></span>
+          </div>
+        }>
+          <Outlet />
+        </Suspense>
       </div>
 
       {/* ── Sidebar ── */}

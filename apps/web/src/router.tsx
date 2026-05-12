@@ -1,11 +1,10 @@
 import { createBrowserRouter, Navigate } from 'react-router-dom'
-import Login from './pages/Login'
-import Register from './pages/Register'
-import Dashboard from './pages/Dashboard'
-import Certificates from './pages/Certificates'
-import DomainDetail from './pages/DomainDetail'
 import AppLayout from './components/layout/AppLayout'
 import { ProtectedRoute } from './components/ProtectedRoute'
+
+// Best practice for React Router v6 with code splitting:
+// Use the `lazy` property on the route definition instead of React.lazy.
+// This keeps component definitions out of the router file, satisfying Fast Refresh.
 
 export const router = createBrowserRouter([
   {
@@ -14,11 +13,17 @@ export const router = createBrowserRouter([
   },
   {
     path: '/login',
-    element: <Login />,
+    lazy: async () => {
+      const { default: Component } = await import('./pages/Login')
+      return { Component }
+    },
   },
   {
     path: '/register',
-    element: <Register />,
+    lazy: async () => {
+      const { default: Component } = await import('./pages/Register')
+      return { Component }
+    },
   },
   {
     element: (
@@ -29,15 +34,24 @@ export const router = createBrowserRouter([
     children: [
       {
         path: '/dashboard',
-        element: <Dashboard />,
+        lazy: async () => {
+          const { default: Component } = await import('./pages/Dashboard')
+          return { Component }
+        },
       },
       {
         path: '/certificates',
-        element: <Certificates />,
+        lazy: async () => {
+          const { default: Component } = await import('./pages/Certificates')
+          return { Component }
+        },
       },
       {
         path: '/certificates/:id',
-        element: <DomainDetail />,
+        lazy: async () => {
+          const { default: Component } = await import('./pages/DomainDetail')
+          return { Component }
+        },
       },
     ],
   },
