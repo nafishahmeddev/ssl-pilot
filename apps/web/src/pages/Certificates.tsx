@@ -35,16 +35,16 @@ function isExpiringSoon(expiryDate?: string): boolean {
 export default function Certificates() {
   const qc = useQueryClient()
 
-  const [showForm, setShowForm]         = useState(false)
-  const [formDomain, setFormDomain]     = useState('')
-  const [challenge, setChallenge]       = useState<ChallengeState | null>(null)
-  const [certificate, setCertificate]   = useState<CertState | null>(null)
-  const [expandedRow, setExpandedRow]   = useState<string | null>(null)
-  const [modalCert, setModalCert]       = useState<CertState | null>(null)
-  const [copiedKey, setCopiedKey]       = useState<string | null>(null)
+  const [showForm, setShowForm] = useState(false)
+  const [formDomain, setFormDomain] = useState('')
+  const [challenge, setChallenge] = useState<ChallengeState | null>(null)
+  const [certificate, setCertificate] = useState<CertState | null>(null)
+  const [expandedRow, setExpandedRow] = useState<string | null>(null)
+  const [modalCert, setModalCert] = useState<CertState | null>(null)
+  const [copiedKey, setCopiedKey] = useState<string | null>(null)
 
   // Per-domain cooldown tracking (60s verify, 45s initiate)
-  const cooldownsRef  = useRef<Map<string, number>>(new Map())
+  const cooldownsRef = useRef<Map<string, number>>(new Map())
   const [, forceRender] = useState(0)
 
   const startDomainCooldown = useCallback((domain: string, ms: number) => {
@@ -56,11 +56,11 @@ export default function Certificates() {
     }, ms)
   }, [])
 
-  const isCooling     = useCallback((domain: string) => (cooldownsRef.current.get(domain) ?? 0) > Date.now(), [])
-  const secondsLeft   = useCallback((domain: string) => {
-    const endsAt = cooldownsRef.current.get(domain) ?? 0
-    return Math.max(0, Math.ceil((endsAt - Date.now()) / 1000))
-  }, [])
+  const isCooling = useCallback((domain: string) => (cooldownsRef.current.get(domain) ?? 0) > Date.now(), [])
+  // const secondsLeft   = useCallback((domain: string) => {
+  //   const endsAt = cooldownsRef.current.get(domain) ?? 0
+  //   return Math.max(0, Math.ceil((endsAt - Date.now()) / 1000))
+  // }, [])
 
   // Cooldown for the new-certificate flow (verify step uses global verify CD)
   const verifyCD = useCooldown(60_000)
@@ -112,7 +112,7 @@ export default function Certificates() {
     if (isCooling(domain)) return
     initiateMutation.mutate(domain)
   }
-  const handleCopy     = async (text: string, key: string) => {
+  const handleCopy = async (text: string, key: string) => {
     await navigator.clipboard.writeText(text)
     setCopiedKey(key)
     setTimeout(() => setCopiedKey(null), 2000)
@@ -359,11 +359,11 @@ function StatusBadge({ status, expiring }: { status: DomainStatus; expiring?: bo
     return <span className="badge badge-sm badge-warning gap-1"><AlertTriangle className="w-3 h-3" />Expiring</span>
   }
   const map: Record<DomainStatus, { label: string; cls: string }> = {
-    active:            { label: 'Active',      cls: 'badge-success' },
-    pending:           { label: 'Pending',     cls: 'badge-neutral' },
+    active: { label: 'Active', cls: 'badge-success' },
+    pending: { label: 'Pending', cls: 'badge-neutral' },
     pending_challenge: { label: 'DNS Pending', cls: 'badge-warning' },
-    expired:           { label: 'Expired',     cls: 'badge-error'   },
-    failed:            { label: 'Failed',      cls: 'badge-error'   },
+    expired: { label: 'Expired', cls: 'badge-error' },
+    failed: { label: 'Failed', cls: 'badge-error' },
   }
   const { label, cls } = map[status]
   return <span className={`badge badge-sm ${cls}`}>{label}</span>
@@ -415,7 +415,7 @@ function ExpandedChallenge({
   onCopy: (text: string, key: string) => void
   onRecheck: () => void
 }) {
-  const txtName  = cert.txtRecordName  ?? `_acme-challenge.${cert.domainName}`
+  const txtName = cert.txtRecordName ?? `_acme-challenge.${cert.domainName}`
   const txtValue = cert.txtRecordValue ?? '(not available)'
 
   return (
@@ -425,7 +425,7 @@ function ExpandedChallenge({
       </p>
       <div className="space-y-3 font-mono text-sm">
         {[
-          { label: 'Name',  value: txtName,  key: `${cert._id}-name`,  color: 'var(--c-info)'   },
+          { label: 'Name', value: txtName, key: `${cert._id}-name`, color: 'var(--c-info)' },
           { label: 'Value', value: txtValue, key: `${cert._id}-value`, color: 'var(--c-purple)' },
         ].map(({ label, value, key, color }) => (
           <div key={key} className="flex items-start gap-2">
@@ -486,7 +486,7 @@ function ChallengeCard({
           <span className="badge badge-neutral font-mono text-xs">TXT</span>
         </div>
         {[
-          { label: 'Name',  value: challenge.txtName,  key: 'ch-name',  color: 'var(--c-info)'   },
+          { label: 'Name', value: challenge.txtName, key: 'ch-name', color: 'var(--c-info)' },
           { label: 'Value', value: challenge.txtValue, key: 'ch-value', color: 'var(--c-purple)' },
         ].map(({ label, value, key, color }) => (
           <div key={key} className="space-y-1.5">
@@ -575,8 +575,8 @@ function CertFiles({
   return (
     <>
       {[
-        { label: 'Certificate', value: cert,    copyKey: 'cert', filename: `${domain}.crt`, color: 'var(--c-info)'   },
-        { label: 'Private Key', value: privKey, copyKey: 'key',  filename: `${domain}.key`, color: 'var(--c-purple)' },
+        { label: 'Certificate', value: cert, copyKey: 'cert', filename: `${domain}.crt`, color: 'var(--c-info)' },
+        { label: 'Private Key', value: privKey, copyKey: 'key', filename: `${domain}.key`, color: 'var(--c-purple)' },
       ].map(({ label, value, copyKey, filename, color }) => (
         <div key={copyKey} className="mb-4">
           <div className="flex items-center justify-between mb-2">
