@@ -1,9 +1,6 @@
 @import "tailwindcss";
 @plugin "daisyui";
 
-/* ─── Google Sans Flex ────────────────────────────────────────────────────── */
-@import url('https://fonts.googleapis.com/css2?family=Google+Sans+Flex:wght@100..900&display=swap');
-
 /* ─── DaisyUI Light Emerald Theme ────────────────────────────────────────── */
 @plugin "daisyui/theme" {
   name: "ssl-pilot";
