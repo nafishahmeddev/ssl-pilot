@@ -1,37 +1,39 @@
-import { Schema, model } from 'mongoose'
+import { Schema, model, Document, Types } from 'mongoose'
 
-/**
- * Mongoose Schema for storing domains to be monitored and managed.
- */
-const domainSchema = new Schema({
-  organizationId: {
-    type: Schema.Types.ObjectId,
-    required: true
-  },
-  domainName: {
-    type: String,
-    required: true,
-    unique: true,
-    trim: true,
-    lowercase: true
-  },
-  status: {
-    type: String,
-    enum: ['pending', 'pending_challenge', 'active', 'expired', 'failed'],
-    default: 'pending'
-  },
-  acmeOrderUrl: { type: String },
-  acmeChallengeUrl: { type: String },
-  txtRecordName: { type: String },
-  txtRecordValue: { type: String },
-  lastChecked: {
-    type: Date
-  },
-  expiryDate: {
-    type: Date
-  }
-}, {
-  timestamps: true
-})
+export type DomainStatus = 'pending' | 'pending_challenge' | 'active' | 'expired' | 'failed'
 
-export const DomainModel = model('Domain', domainSchema)
+export interface IDomain extends Document {
+  _id: Types.ObjectId
+  organizationId: Types.ObjectId
+  domainName: string
+  status: DomainStatus
+  acmeOrderUrl?: string
+  acmeChallengeUrl?: string
+  txtRecordName?: string
+  txtRecordValue?: string
+  lastChecked?: Date
+  expiryDate?: Date
+  createdAt: Date
+  updatedAt: Date
+}
+
+const domainSchema = new Schema<IDomain>(
+  {
+    organizationId: { type: Schema.Types.ObjectId, required: true, index: true },
+    domainName: { type: String, required: true, unique: true, trim: true, lowercase: true },
+    status: {
+      type: String,
+      enum: ['pending', 'pending_challenge', 'active', 'expired', 'failed'],
+      default: 'pending',
+    },
+    acmeOrderUrl: { type: String },
+    acmeChallengeUrl: { type: String },
+    txtRecordName: { type: String },
+    txtRecordValue: { type: String },
+    lastChecked: { type: Date },
+    expiryDate: { type: Date },
+  },
+  { timestamps: true }
+)
+
+export const DomainModel = model<IDomain>('Domain', domainSchema)

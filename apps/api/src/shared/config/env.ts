@@ -13,7 +13,6 @@ const envSchema = z.object({
   JWT_ACCESS_SECRET: z.string().default('access-secret-change-me-in-prod'),
   JWT_REFRESH_SECRET: z.string().default('refresh-secret-change-me-in-prod'),
   FRONTEND_URL: z.string().url('FRONTEND_URL must be a valid URL').default('http://localhost:5173'),
-  ACME_ACCOUNT_KEY: z.string().optional(),
 })
 
 const parsedEnv = envSchema.safeParse(process.env)

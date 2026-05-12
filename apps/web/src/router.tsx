@@ -2,11 +2,10 @@ import { createBrowserRouter, Navigate } from 'react-router-dom'
 import Login from './pages/Login'
 import Register from './pages/Register'
 import Dashboard from './pages/Dashboard'
+import Certificates from './pages/Certificates'
+import AppLayout from './components/layout/AppLayout'
 import { ProtectedRoute } from './components/ProtectedRoute'
 
-/**
- * Router configuration for the application.
- */
 export const router = createBrowserRouter([
   {
     path: '/',
@@ -21,11 +20,20 @@ export const router = createBrowserRouter([
     element: <Register />,
   },
   {
-    path: '/dashboard',
     element: (
       <ProtectedRoute>
-        <Dashboard />
+        <AppLayout />
       </ProtectedRoute>
     ),
+    children: [
+      {
+        path: '/dashboard',
+        element: <Dashboard />,
+      },
+      {
+        path: '/certificates',
+        element: <Certificates />,
+      },
+    ],
   },
 ])

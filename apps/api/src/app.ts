@@ -14,6 +14,10 @@ import { env } from '@src/shared/config/env'
 export type Env = {
   Variables: {
     requestId: string
+    userId: string
+    organizationId: string
+    userRole: string
+    userEmail: string
   }
 }
 
