@@ -1,15 +1,14 @@
 import { Suspense } from 'react'
-import { Outlet, NavLink, useNavigate } from 'react-router-dom'
+import { Outlet, NavLink, useNavigate, Link } from 'react-router-dom'
 import { useSelector } from '@tanstack/react-store'
 import { useQuery } from '@tanstack/react-query'
 import { authStore, setAccessToken } from '../../store/auth'
 import { logoutApi, getProfileApi } from '../../api/auth'
-import { Shield, LayoutDashboard, ShieldCheck, LogOut, Menu, User, Building } from 'lucide-react'
+import { Shield, LayoutDashboard, ShieldCheck, LogOut, Menu, Building } from 'lucide-react'
 
 const NAV = [
   { to: '/dashboard', label: 'Dashboard', icon: LayoutDashboard },
   { to: '/certificates', label: 'Certificates', icon: ShieldCheck },
-  { to: '/profile', label: 'Profile', icon: User },
 ]
 
 export default function AppLayout() {
@@ -130,8 +129,9 @@ export default function AppLayout() {
 
           {/* User */}
           <div className="p-4 shrink-0" style={{ borderTop: '1px solid var(--c-border)' }}>
-            <div
-              className="p-3 rounded-xl flex items-center gap-3"
+            <Link
+              to="/profile"
+              className="p-3 rounded-xl flex items-center gap-3 transition-all cursor-pointer hover:opacity-90"
               style={{ background: 'var(--c-page)', border: '1px solid var(--c-border)' }}
             >
               <div
@@ -157,7 +157,7 @@ export default function AppLayout() {
                   </p>
                 </div>
               </div>
-            </div>
+            </Link>
           </div>
         </aside>
       </div>
