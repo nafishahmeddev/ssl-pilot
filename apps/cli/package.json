@@ -1,0 +1,26 @@
+{
+  "name": "ssl-pilot-cli",
+  "version": "1.0.0",
+  "description": "SSL Pilot CLI — download and manage your SSL certificates",
+  "type": "module",
+  "bin": {
+    "ssl-pilot": "./dist/index.js"
+  },
+  "scripts": {
+    "build": "tsc",
+    "dev": "tsx src/index.ts",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@inquirer/select": "^4.0.0",
+    "commander": "^12.0.0"
+  },
+  "devDependencies": {
+    "@types/node": "^20.0.0",
+    "tsx": "^4.7.1",
+    "typescript": "^5.8.3"
+  },
+  "engines": {
+    "node": ">=18"
+  }
+}

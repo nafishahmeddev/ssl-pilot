@@ -1,0 +1,115 @@
+name: CLI Release
+
+on:
+  push:
+    tags:
+      - 'cli-v*'
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    name: Build & Release
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Bun
+        uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: latest
+
+      - name: Install dependencies
+        working-directory: apps/cli
+        run: bun install --frozen-lockfile
+
+      - name: Build binaries (all platforms)
+        working-directory: apps/cli
+        run: |
+          mkdir -p dist
+
+          bun build --compile --minify \
+            --target=bun-linux-x64 \
+            src/index.ts \
+            --outfile dist/ssl-pilot-linux-x64
+
+          bun build --compile --minify \
+            --target=bun-linux-arm64 \
+            src/index.ts \
+            --outfile dist/ssl-pilot-linux-arm64
+
+          bun build --compile --minify \
+            --target=bun-darwin-x64 \
+            src/index.ts \
+            --outfile dist/ssl-pilot-darwin-x64
+
+          bun build --compile --minify \
+            --target=bun-darwin-arm64 \
+            src/index.ts \
+            --outfile dist/ssl-pilot-darwin-arm64
+
+      - name: Verify binaries exist
+        working-directory: apps/cli
+        run: |
+          ls -lh dist/
+          for f in dist/ssl-pilot-linux-x64 dist/ssl-pilot-linux-arm64 dist/ssl-pilot-darwin-x64 dist/ssl-pilot-darwin-arm64; do
+            if [[ ! -s "$f" ]]; then
+              echo "Missing or empty: $f"
+              exit 1
+            fi
+          done
+
+      - name: Extract version from tag
+        id: version
+        run: echo "VERSION=${GITHUB_REF_NAME#cli-v}" >> "$GITHUB_OUTPUT"
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          name: "CLI v${{ steps.version.outputs.VERSION }}"
+          body: |
+            ## SSL Pilot CLI v${{ steps.version.outputs.VERSION }}
+
+            ### Install
+
+            ```bash
+            sudo bash <(curl -fsSL https://raw.githubusercontent.com/nafishahmeddev/ssl-pilot/main/apps/cli/install.sh)
+            ```
+
+            ### Uninstall
+
+            ```bash
+            sudo bash <(curl -fsSL https://raw.githubusercontent.com/nafishahmeddev/ssl-pilot/main/apps/cli/uninstall.sh)
+            ```
+
+            ### Manual download
+
+            | Platform | File |
+            |----------|------|
+            | Linux x64 | `ssl-pilot-linux-x64` |
+            | Linux ARM64 | `ssl-pilot-linux-arm64` |
+            | macOS x64 | `ssl-pilot-darwin-x64` |
+            | macOS ARM64 (Apple Silicon) | `ssl-pilot-darwin-arm64` |
+
+            ### Usage
+
+            ```bash
+            export SSL_PILOT_API_KEY='sslpilot_...'
+
+            ssl-pilot list
+            sudo ssl-pilot download
+            sudo ssl-pilot download '*.example.com'
+            sudo ssl-pilot download --id <cert-id>
+            ```
+          files: |
+            apps/cli/dist/ssl-pilot-linux-x64
+            apps/cli/dist/ssl-pilot-linux-arm64
+            apps/cli/dist/ssl-pilot-darwin-x64
+            apps/cli/dist/ssl-pilot-darwin-arm64
+            apps/cli/install.sh
+            apps/cli/uninstall.sh
+          draft: false
+          prerelease: false

@@ -9,7 +9,9 @@
       "Bash(npm run *)",
       "Bash(grep -n \"txtRecordName\\\\|_acme-challenge\\\\.\\\\$\" /Users/ahmed/Documents/Projects/ssl-pilot/apps/web/src/pages/Certificates.tsx)",
       "WebFetch(domain:tools.ietf.org)",
-      "WebSearch"
+      "WebSearch",
+      "Bash(xargs cat *)",
+      "Bash(git -C /Users/ahmed/Documents/Projects/ssl-pilot remote get-url origin)"
     ],
     "additionalDirectories": [
       "/Users/ahmed/Documents/Projects-pilot/apps/api/src/jobs"
