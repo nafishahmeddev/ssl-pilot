@@ -254,13 +254,23 @@ export class AcmeService {
       throw new Error(`Invalid state: expected challenge_verified, got ${certDoc.status}`)
     }
 
-    const client = await this.getClient(orgId, email)
+    const [client, org] = await Promise.all([
+      this.getClient(orgId, email),
+      OrganizationModel.findById(orgId, { name: 1 }).lean(),
+    ])
     const order = await client.getOrder(
       { url: certDoc.acmeOrderUrl } as Parameters<typeof client.getOrder>[0],
     )
 
     const certKey = await acme.crypto.createPrivateKey()
-    const [, csr] = await acme.crypto.createCsr({ commonName: certName }, certKey)
+    const [, csr] = await acme.crypto.createCsr(
+      {
+        commonName:    certName,
+        organization:  org?.name,
+        emailAddress:  email,
+      },
+      certKey,
+    )
     const finalizedOrder = await client.finalizeOrder(order, csr)
     const certPem = (await client.getCertificate(finalizedOrder)).toString()
     const expiryDate = new Date(new X509Certificate(certPem).validTo)
