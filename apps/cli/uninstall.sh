@@ -19,7 +19,7 @@ info() { echo -e "${BOLD}$*${NC}"; }
 if [[ "$EUID" -ne 0 ]]; then
   err "This uninstaller must run as root."
   echo ""
-  echo "  sudo bash <(curl -fsSL https://raw.githubusercontent.com/nafishahmeddev/ssl-pilot/main/apps/cli/uninstall.sh)"
+  echo "  curl -fsSL https://raw.githubusercontent.com/nafishahmeddev/ssl-pilot/main/apps/cli/uninstall.sh | sudo bash"
   echo ""
   exit 1
 fi

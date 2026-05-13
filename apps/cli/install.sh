@@ -21,7 +21,7 @@ warn() { echo -e "${YELLOW}Warning: $*${NC}"; }
 if [[ "$EUID" -ne 0 ]]; then
   err "This installer must run as root."
   echo ""
-  echo "  sudo bash <(curl -fsSL https://raw.githubusercontent.com/${REPO}/main/apps/cli/install.sh)"
+  echo "  curl -fsSL https://raw.githubusercontent.com/${REPO}/main/apps/cli/install.sh | sudo bash"
   echo ""
   exit 1
 fi
