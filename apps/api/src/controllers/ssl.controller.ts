@@ -70,11 +70,16 @@ export const initiateSslHandler = factory.createHandlers(
   }
 )
 
+const VERIFY_TTL_MS = 5 * 60 * 1000 // 5 minutes between challenge-verify attempts
+
 /**
  * POST /api/ssl/verify
- * Completes the ACME DNS-01 challenge and issues the certificate.
+ * Tells Let's Encrypt to validate the DNS/HTTP challenge.
+ * Domain must be in `pending_challenge` state.
+ * On success transitions domain to `challenge_verified`.
+ * TTL: 5 minutes between retries (ACME rate-limits anyway).
  */
-export const verifySslHandler = factory.createHandlers(
+export const verifyChallengeHandler = factory.createHandlers(
   zValidator('json', domainSchema),
   async (c) => {
     const { domain } = c.req.valid('json')
@@ -82,8 +87,40 @@ export const verifySslHandler = factory.createHandlers(
     const email = c.get('userEmail')
 
     try {
-      const result = await acmeService.verifyAndIssue(domain, orgId, email)
-      return ApiResponse.success(c, result, 'Certificate issued successfully.')
+      const domainDoc = await DomainModel.findOne(
+        { domainName: domain, organizationId: orgId },
+        { _id: 1, status: 1, lastChecked: 1 },
+      ).lean()
+
+      if (!domainDoc) {
+        return ApiResponse.error(c, 'Domain not found', 'NOT_FOUND', 404)
+      }
+      if (domainDoc.status !== 'pending_challenge') {
+        return ApiResponse.error(
+          c,
+          `Domain is not awaiting verification (current status: ${domainDoc.status})`,
+          'INVALID_STATE',
+          409,
+        )
+      }
+
+      if (domainDoc.lastChecked) {
+        const elapsed = Date.now() - domainDoc.lastChecked.getTime()
+        if (elapsed < VERIFY_TTL_MS) {
+          const timeLeft = Math.ceil((VERIFY_TTL_MS - elapsed) / 1000)
+          return ApiResponse.error(
+            c,
+            `Please wait ${timeLeft} seconds before retrying verification.`,
+            'TTL_BLOCK',
+            429,
+          )
+        }
+      }
+
+      await DomainModel.updateOne({ _id: domainDoc._id }, { $set: { lastChecked: new Date() } })
+
+      await acmeService.verifyChallenge(domain, orgId, email)
+      return ApiResponse.success(c, { status: 'challenge_verified' }, 'Challenge verified. You can now generate the certificate.')
     } catch (error: unknown) {
       return ApiResponse.error(c, (error as Error).message, 'VERIFY_ERROR', 500)
     }
@@ -91,11 +128,12 @@ export const verifySslHandler = factory.createHandlers(
 )
 
 /**
- * POST /api/ssl/recheck
- * Re-attempts ACME verification on an existing pending_challenge domain.
- * Identical logic to /verify but semantically distinct for UX clarity.
+ * POST /api/ssl/generate
+ * Finalises the ACME order and issues the certificate.
+ * Domain must be in `challenge_verified` state.
+ * On success transitions domain to `active` and returns cert + key PEM.
  */
-export const recheckHandler = factory.createHandlers(
+export const generateCertHandler = factory.createHandlers(
   zValidator('json', domainSchema),
   async (c) => {
     const { domain } = c.req.valid('json')
@@ -103,24 +141,27 @@ export const recheckHandler = factory.createHandlers(
     const email = c.get('userEmail')
 
     try {
-      const domainDoc = await DomainModel.findOne({ domainName: domain, organizationId: orgId })
+      const domainDoc = await DomainModel.findOne(
+        { domainName: domain, organizationId: orgId },
+        { status: 1 },
+      ).lean()
+
       if (!domainDoc) {
         return ApiResponse.error(c, 'Domain not found', 'NOT_FOUND', 404)
       }
-
-      const TTL = 5 * 60 * 1000 // 5 minutes
-      if (domainDoc.lastChecked && (Date.now() - domainDoc.lastChecked.getTime() < TTL)) {
-        const timeLeft = Math.ceil((TTL - (Date.now() - domainDoc.lastChecked.getTime())) / 1000)
-        return ApiResponse.error(c, `Please wait ${timeLeft} seconds before retrying verification.`, 'TTL_BLOCK', 429)
+      if (domainDoc.status !== 'challenge_verified') {
+        return ApiResponse.error(
+          c,
+          `Domain challenge has not been verified yet (current status: ${domainDoc.status})`,
+          'INVALID_STATE',
+          409,
+        )
       }
 
-      // Update lastChecked immediately to prevent concurrent attempts
-      await DomainModel.updateOne({ _id: domainDoc._id }, { $set: { lastChecked: new Date() } })
-
-      const result = await acmeService.verifyAndIssue(domain, orgId, email)
+      const result = await acmeService.generateCertificate(domain, orgId, email)
       return ApiResponse.success(c, result, 'Certificate issued successfully.')
     } catch (error: unknown) {
-      return ApiResponse.error(c, (error as Error).message, 'RECHECK_ERROR', 500)
+      return ApiResponse.error(c, (error as Error).message, 'GENERATE_ERROR', 500)
     }
   }
 )

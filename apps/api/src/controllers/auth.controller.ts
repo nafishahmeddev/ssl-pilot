@@ -12,6 +12,20 @@ import type { Env } from '@src/app'
 
 const factory = createFactory<Env>()
 
+/** Shared access-token payload — keeps loginHandler and refreshHandler in sync. */
+function createAccessToken(user: { _id: { toString(): string }; organizationId: { toString(): string }; role: string; email: string }) {
+  return sign(
+    {
+      sub:            user._id.toString(),
+      organizationId: user.organizationId.toString(),
+      role:           user.role,
+      email:          user.email,
+      exp:            Math.floor(Date.now() / 1000) + 60 * 15, // 15 min
+    },
+    env.JWT_ACCESS_SECRET,
+  )
+}
+
 const registerSchema = z.object({
   name: z.string().min(2, 'Name must be at least 2 characters'),
   email: z.string().email('Invalid email address'),
@@ -59,19 +73,9 @@ export const loginHandler = factory.createHandlers(
         return ApiResponse.error(c, 'Invalid credentials', 'INVALID_CREDENTIALS', 401)
       }
 
+      const accessToken = await createAccessToken(user)
+
       const now = Math.floor(Date.now() / 1000)
-
-      const accessToken = await sign(
-        {
-          sub: user._id.toString(),
-          organizationId: user.organizationId.toString(),
-          role: user.role,
-          email: user.email,
-          exp: now + 60 * 15,
-        },
-        env.JWT_ACCESS_SECRET
-      )
-
       const refreshToken = await sign(
         { sub: user._id.toString(), exp: now + 60 * 60 * 24 * 7 },
         env.JWT_REFRESH_SECRET
@@ -106,16 +110,7 @@ export const refreshHandler = factory.createHandlers(async (c) => {
       return ApiResponse.error(c, 'User not found', 'USER_NOT_FOUND', 401)
     }
 
-    const accessToken = await sign(
-      {
-        sub: user._id.toString(),
-        organizationId: user.organizationId.toString(),
-        role: user.role,
-        email: user.email,
-        exp: Math.floor(Date.now() / 1000) + 60 * 15,
-      },
-      env.JWT_ACCESS_SECRET
-    )
+    const accessToken = await createAccessToken(user)
 
     return ApiResponse.success(c, { accessToken }, 'Token refreshed successfully')
   } catch {

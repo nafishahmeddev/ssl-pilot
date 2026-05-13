@@ -1,6 +1,6 @@
 import type { ApiResponse } from './api'
 
-export type DomainStatus = 'pending' | 'pending_challenge' | 'active' | 'expired' | 'failed'
+export type DomainStatus = 'pending' | 'pending_challenge' | 'challenge_verified' | 'active' | 'expired' | 'failed'
 
 // ── Challenge types ────────────────────────────────────────────────────────────
 
@@ -91,7 +91,8 @@ export interface DomainDetail {
 
 // ── API response aliases ───────────────────────────────────────────────────────
 
-export type InitiateSslResponse  = ApiResponse<ChallengeInfo>
-export type VerifySslResponse    = ApiResponse<IssuedCertificate>
-export type CertificatesResponse = ApiResponse<{ certificates: DomainRecord[] }>
-export type DomainDetailResponse = ApiResponse<DomainDetail>
+export type InitiateSslResponse   = ApiResponse<ChallengeInfo>
+export type VerifySslResponse     = ApiResponse<{ status: 'challenge_verified' }>
+export type GenerateSslResponse   = ApiResponse<IssuedCertificate>
+export type CertificatesResponse  = ApiResponse<{ certificates: DomainRecord[] }>
+export type DomainDetailResponse  = ApiResponse<DomainDetail>

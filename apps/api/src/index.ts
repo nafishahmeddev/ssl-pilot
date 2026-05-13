@@ -5,7 +5,6 @@ import { env } from '@src/shared/config/env'
 import { logger } from '@src/shared/utils/logger'
 import { connectDB } from '@src/shared/database/mongoose'
 import { startRenewalJob, stopRenewalJob } from '@src/jobs/renewal.job'
-import { startVerificationJob, stopVerificationJob } from '@src/jobs/verification.job'
 
 let server: ServerType
 
@@ -13,7 +12,6 @@ async function startServer() {
   await connectDB()
 
   startRenewalJob()
-  startVerificationJob()
 
   server = serve({
     fetch: app.fetch,
@@ -30,7 +28,6 @@ startServer().catch((err) => {
 
 const shutdown = () => {
   logger.info('Shutting down gracefully...')
-  stopVerificationJob()
   stopRenewalJob()
   ;(server as any).closeAllConnections?.()
   server.close((err) => {

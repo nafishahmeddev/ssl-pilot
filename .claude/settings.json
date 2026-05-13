@@ -4,6 +4,9 @@
       "Bash(npx tsc *)",
       "Bash(npm install *)",
       "Bash(node -e \"const m = require\\('mongoose'\\); console.log\\(typeof m.FilterQuery, Object.keys\\(m\\).filter\\(k=>k.includes\\('Filter'\\)\\)\\)\")"
+    ],
+    "additionalDirectories": [
+      "/Users/ahmed/Documents/Projects-pilot/apps/api/src/jobs"
     ]
   }
 }

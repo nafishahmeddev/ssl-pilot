@@ -134,7 +134,7 @@ export class AcmeService {
     if (challengeType === ChallengeType.DNS_01) {
       const txtName = `_acme-challenge.${domain}`
 
-      await DomainModel.findOneAndUpdate(
+      await DomainModel.updateOne(
         { domainName: domain, organizationId: orgId },
         {
           $set: {
@@ -149,7 +149,7 @@ export class AcmeService {
             renewalFailedAt:      1,
           },
         },
-        { upsert: true, new: true },
+        { upsert: true },
       )
 
       logger.info({ domain, orgId }, 'ACME: dns-01 order initiated')
@@ -159,7 +159,7 @@ export class AcmeService {
     // HTTP-01
     const token = challenge.token
 
-    await DomainModel.findOneAndUpdate(
+    await DomainModel.updateOne(
       { domainName: domain, organizationId: orgId },
       {
         $set: {
@@ -174,7 +174,7 @@ export class AcmeService {
           renewalFailedAt: 1,
         },
       },
-      { upsert: true, new: true },
+      { upsert: true },
     )
 
     logger.info({ domain, orgId }, 'ACME: http-01 order initiated')
@@ -182,15 +182,23 @@ export class AcmeService {
   }
 
   /**
-   * Completes the stored ACME challenge (dns-01 or http-01), finalises the
-   * order, and persists the issued certificate to the domain document.
+   * Step 2 — Completes the stored ACME challenge and waits for Let's Encrypt
+   * to mark it valid. Sets domain status to `challenge_verified`.
+   * The user must then call `generateCertificate` to finalise the order.
    */
-  async verifyAndIssue(domain: string, orgId: string, email: string): Promise<{ cert: string; key: string }> {
+  async verifyChallenge(domain: string, orgId: string, email: string): Promise<void> {
     logger.info({ domain, orgId }, 'ACME: verifying challenge')
 
-    const domainDoc = await DomainModel.findOne({ domainName: domain, organizationId: orgId })
+    const domainDoc = await DomainModel.findOne(
+      { domainName: domain, organizationId: orgId },
+      { status: 1, acmeOrderUrl: 1, challengeType: 1 },
+    ).lean()
+
     if (!domainDoc?.acmeOrderUrl) {
       throw new Error('No pending order found. Call initiateOrder first.')
+    }
+    if (domainDoc.status !== 'pending_challenge') {
+      throw new Error(`Invalid state: expected pending_challenge, got ${domainDoc.status}`)
     }
 
     const resolvedChallengeType = domainDoc.challengeType ?? ChallengeType.DNS_01
@@ -213,7 +221,7 @@ export class AcmeService {
     let challenge: Challenge = found
 
     if (challenge.status === 'pending') {
-      logger.info({ domain, resolvedChallengeType }, 'ACME: notifying Let\'s Encrypt to verify challenge')
+      logger.info({ domain, resolvedChallengeType }, "ACME: notifying Let's Encrypt to verify challenge")
       challenge = (await client.completeChallenge(challenge)) as Challenge
     }
 
@@ -224,6 +232,40 @@ export class AcmeService {
       throw new Error(`Challenge verification failed with status: ${challenge.status}`)
     }
 
+    await DomainModel.updateOne(
+      { domainName: domain, organizationId: orgId },
+      { $set: { status: 'challenge_verified' } },
+    )
+
+    logger.info({ domain, orgId }, 'ACME: challenge verified — ready to generate certificate')
+  }
+
+  /**
+   * Step 3 — Finalises the ACME order and issues the certificate.
+   * Domain must be in `challenge_verified` state.
+   * Sets domain status to `active` and persists cert + key PEM.
+   */
+  async generateCertificate(domain: string, orgId: string, email: string): Promise<{ cert: string; key: string }> {
+    logger.info({ domain, orgId }, 'ACME: generating certificate')
+
+    const domainDoc = await DomainModel.findOne(
+      { domainName: domain, organizationId: orgId },
+      { status: 1, acmeOrderUrl: 1 },
+    ).lean()
+
+    if (!domainDoc?.acmeOrderUrl) {
+      throw new Error('No verified order found. Call verifyChallenge first.')
+    }
+    if (domainDoc.status !== 'challenge_verified') {
+      throw new Error(`Invalid state: expected challenge_verified, got ${domainDoc.status}`)
+    }
+
+    const client = await this.getClient(orgId, email)
+
+    const order = await client.getOrder(
+      { url: domainDoc.acmeOrderUrl } as Parameters<typeof client.getOrder>[0],
+    )
+
     const certKey = await acme.crypto.createPrivateKey()
     const [, csr] = await acme.crypto.createCsr({ commonName: domain }, certKey)
     const finalizedOrder = await client.finalizeOrder(order, csr)
@@ -232,9 +274,9 @@ export class AcmeService {
     const certStr = cert.toString()
     const expiryDate = new Date(new X509Certificate(certStr).validTo)
 
-    await DomainModel.findOneAndUpdate(
+    await DomainModel.updateOne(
       { domainName: domain, organizationId: orgId },
-      { status: 'active', expiryDate, certPem: certStr, keyPem: certKey.toString() },
+      { $set: { status: 'active', expiryDate, certPem: certStr, keyPem: certKey.toString() } },
     )
 
     logger.info({ domain, orgId, expiryDate }, 'ACME: certificate issued')

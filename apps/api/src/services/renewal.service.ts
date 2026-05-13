@@ -134,7 +134,7 @@ async function initiateRenewalOrders(): Promise<RenewalResult> {
 
       // Persist the error so the admin panel can surface it and prompt the user
       // to trigger renewal manually. Only the user (via admin panel) can clear this.
-      await DomainModel.findOneAndUpdate(
+      await DomainModel.updateOne(
         { _id: domain._id },
         { $set: { renewalError: message, renewalFailedAt: new Date() } }
       ).catch((dbErr: unknown) => log.error({ dbErr }, 'Renewal: failed to persist renewalError'))

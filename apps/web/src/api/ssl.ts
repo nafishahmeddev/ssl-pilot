@@ -3,6 +3,7 @@ import type {
   ChallengeType,
   InitiateSslResponse,
   VerifySslResponse,
+  GenerateSslResponse,
   CertificatesResponse,
   DomainDetailResponse,
 } from '../types/ssl'
@@ -26,13 +27,15 @@ export const initiateSslApi = async (
   return response.data
 }
 
+/** Step 2 — tell ACME to validate the DNS/HTTP challenge. */
 export const verifySslApi = async (domain: string): Promise<VerifySslResponse> => {
   const response = await apiClient.post<VerifySslResponse>('/api/ssl/verify', { domain })
   return response.data
 }
 
-export const recheckSslApi = async (domain: string): Promise<VerifySslResponse> => {
-  const response = await apiClient.post<VerifySslResponse>('/api/ssl/recheck', { domain })
+/** Step 3 — finalise the order and issue the certificate. */
+export const generateSslApi = async (domain: string): Promise<GenerateSslResponse> => {
+  const response = await apiClient.post<GenerateSslResponse>('/api/ssl/generate', { domain })
   return response.data
 }
 

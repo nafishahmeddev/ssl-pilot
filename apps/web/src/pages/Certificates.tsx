@@ -1,7 +1,7 @@
 import { useState, useCallback } from 'react'
 import { Link } from 'react-router-dom'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
-import { getCertificatesApi, initiateSslApi, verifySslApi } from '../api/ssl'
+import { getCertificatesApi, initiateSslApi, verifySslApi, generateSslApi } from '../api/ssl'
 import { getApiError } from '../api/errors'
 import { useCooldown } from '../hooks/useCooldown'
 import { ChallengeType, DomainType } from '../types/ssl'
@@ -42,10 +42,11 @@ export default function Certificates() {
   const [showForm, setShowForm]         = useState(false)
   const [formDomain, setFormDomain]     = useState('')
   const [formChallengeType, setFormChallengeType] = useState<typeof ChallengeType[keyof typeof ChallengeType]>(ChallengeType.DNS_01)
-  const [challenge, setChallenge]       = useState<ChallengeState | null>(null)
-  const [certificate, setCertificate]   = useState<CertState | null>(null)
-  const [modalCert, setModalCert]       = useState<CertState | null>(null)
-  const [copiedKey, setCopiedKey]       = useState<string | null>(null)
+  const [challenge, setChallenge]             = useState<ChallengeState | null>(null)
+  const [challengeVerifiedDomain, setChallengeVerifiedDomain] = useState<string | null>(null)
+  const [certificate, setCertificate]         = useState<CertState | null>(null)
+  const [modalCert, setModalCert]             = useState<CertState | null>(null)
+  const [copiedKey, setCopiedKey]             = useState<string | null>(null)
 
   // Per-domain cooldown tracking (45s initiate, 60s verify)
   const [cooldowns, setCooldowns] = useState<Map<string, number>>(new Map())
@@ -85,9 +86,18 @@ export default function Certificates() {
   const verifyMutation = useMutation({
     mutationFn: (domain: string) => verifySslApi(domain),
     onSettled: () => verifyCD.start(),
-    onSuccess: (res) => {
-      setCertificate({ domain: challenge!.domain, ...res.data })
+    onSuccess: (_, domain) => {
+      setChallengeVerifiedDomain(domain)
       setChallenge(null)
+      qc.invalidateQueries({ queryKey: ['certificates'] })
+    },
+  })
+
+  const generateMutation = useMutation({
+    mutationFn: (domain: string) => generateSslApi(domain),
+    onSuccess: (res, domain) => {
+      setCertificate({ domain, ...res.data })
+      setChallengeVerifiedDomain(null)
       qc.invalidateQueries({ queryKey: ['certificates'] })
     },
   })
@@ -114,12 +124,14 @@ export default function Certificates() {
     setShowForm(false)
     setFormDomain('')
     setChallenge(null)
+    setChallengeVerifiedDomain(null)
     setCertificate(null)
     initiateMutation.reset()
     verifyMutation.reset()
+    generateMutation.reset()
   }
 
-  const activeFlow    = showForm || !!challenge || !!certificate
+  const activeFlow = showForm || !!challenge || !!challengeVerifiedDomain || !!certificate
   const isWildcard    = formDomain.startsWith('*.')
   const isDomainValid = formDomain.length > 0 && FQDN_REGEX.test(formDomain)
 
@@ -303,7 +315,7 @@ export default function Certificates() {
         </div>
       )}
 
-      {/* Challenge Panel */}
+      {/* Step 2 — Challenge Panel */}
       {challenge && (
         <ChallengeCard
           challenge={challenge}
@@ -311,14 +323,25 @@ export default function Certificates() {
           verifyPending={verifyMutation.isPending}
           verifyIsCooling={verifyCD.isCooling}
           verifyCooldownLeft={verifyCD.secondsLeft}
-          verifyError={verifyMutation.isError ? getApiError(verifyMutation.error, 'Verification failed. Check DNS propagation.') : null}
+          verifyError={verifyMutation.isError ? getApiError(verifyMutation.error, 'Verification failed. Check your DNS record or HTTP file.') : null}
           onCopy={handleCopy}
           onVerify={() => verifyMutation.mutate(challenge.domain)}
           onReset={handleReset}
         />
       )}
 
-      {/* Cert Result */}
+      {/* Step 3 — Challenge Verified Panel */}
+      {challengeVerifiedDomain && (
+        <ChallengeVerifiedCard
+          domain={challengeVerifiedDomain}
+          generatePending={generateMutation.isPending}
+          generateError={generateMutation.isError ? getApiError(generateMutation.error, 'Certificate generation failed.') : null}
+          onGenerate={() => generateMutation.mutate(challengeVerifiedDomain)}
+          onReset={handleReset}
+        />
+      )}
+
+      {/* Step 4 — Certificate Result */}
       {certificate && (
         <CertCard
           cert={certificate}
@@ -463,11 +486,12 @@ export default function Certificates() {
 
 // ── Sub-components ────────────────────────────────────────────────────────────
 
-function StepIndicator({ step }: { step: 1 | 2 | 3 }) {
-  const steps: { n: 1 | 2 | 3; label: string }[] = [
-    { n: 1, label: 'Enter Domain' },
-    { n: 2, label: 'Verify Ownership' },
-    { n: 3, label: 'Certificate Ready' },
+function StepIndicator({ step }: { step: 1 | 2 | 3 | 4 }) {
+  const steps: { n: 1 | 2 | 3 | 4; label: string }[] = [
+    { n: 1, label: 'Configure' },
+    { n: 2, label: 'Prove Ownership' },
+    { n: 3, label: 'Generate' },
+    { n: 4, label: 'Done' },
   ]
   return (
     <div className="flex items-center">
@@ -477,7 +501,7 @@ function StepIndicator({ step }: { step: 1 | 2 | 3 }) {
         const last   = i === steps.length - 1
         return (
           <div key={n} className="flex items-center">
-            <div className="flex items-center gap-2">
+            <div className="flex items-center gap-1.5">
               <div
                 className="w-6 h-6 rounded-full flex items-center justify-center text-xs font-bold shrink-0 transition-colors"
                 style={{
@@ -496,7 +520,7 @@ function StepIndicator({ step }: { step: 1 | 2 | 3 }) {
             </div>
             {!last && (
               <div
-                className="h-px w-6 sm:w-10 mx-2 transition-colors"
+                className="h-px w-4 sm:w-7 mx-1.5 transition-colors"
                 style={{ background: step > n ? 'var(--c-primary)' : 'var(--c-border)' }}
               />
             )}
@@ -523,11 +547,12 @@ function StatusBadge({ status, expiring }: { status: DomainStatus; expiring?: bo
     )
   }
   const map: Record<DomainStatus, { label: string; cls: string }> = {
-    active:            { label: 'Active',           cls: 'badge-success' },
-    pending:           { label: 'Pending',          cls: 'badge-neutral' },
-    pending_challenge: { label: 'Challenge Pending', cls: 'badge-warning' },
-    expired:           { label: 'Expired',          cls: 'badge-error'   },
-    failed:            { label: 'Failed',           cls: 'badge-error'   },
+    active:             { label: 'Active',            cls: 'badge-success' },
+    pending:            { label: 'Pending',           cls: 'badge-neutral' },
+    pending_challenge:  { label: 'Challenge Pending', cls: 'badge-warning' },
+    challenge_verified: { label: 'Verified',          cls: 'badge-info'    },
+    expired:            { label: 'Expired',           cls: 'badge-error'   },
+    failed:             { label: 'Failed',            cls: 'badge-error'   },
   }
   const { label, cls } = map[status]
   return <span className={`badge badge-sm ${cls}`}>{label}</span>
@@ -708,6 +733,73 @@ function ChallengeCard({
   )
 }
 
+function ChallengeVerifiedCard({
+  domain,
+  generatePending,
+  generateError,
+  onGenerate,
+  onReset,
+}: {
+  domain: string
+  generatePending: boolean
+  generateError: string | null
+  onGenerate: () => void
+  onReset: () => void
+}) {
+  return (
+    <div className="rounded-2xl p-6 sm:p-8" style={{ background: 'var(--c-card)', border: '1px solid oklch(62% 0.18 158 / 0.35)' }}>
+      <StepIndicator step={3} />
+      <div className="flex items-start gap-3 mt-6 mb-5">
+        <div className="w-10 h-10 rounded-2xl flex items-center justify-center shrink-0" style={{ background: 'var(--c-success-soft)' }}>
+          <ShieldCheck className="w-5 h-5" style={{ color: 'var(--c-success)' }} />
+        </div>
+        <div>
+          <h2 className="text-base font-bold" style={{ color: 'var(--c-text-1)' }}>Ownership Verified</h2>
+          <p className="text-sm mt-1" style={{ color: 'var(--c-text-2)' }}>
+            Let's Encrypt confirmed you control{' '}
+            <span className="font-semibold font-mono" style={{ color: 'var(--c-primary)' }}>{domain}</span>.
+            Generate the certificate to complete issuance.
+          </p>
+        </div>
+      </div>
+
+      <div
+        className="rounded-xl px-4 py-3 mb-5 flex items-start gap-2.5"
+        style={{ background: 'var(--c-surface)', border: '1px solid var(--c-border)' }}
+      >
+        <ArrowRight className="w-4 h-4 shrink-0 mt-0.5" style={{ color: 'var(--c-text-3)' }} />
+        <p className="text-xs" style={{ color: 'var(--c-text-2)' }}>
+          Clicking Generate creates a private key and CSR, then finalises the order with Let's Encrypt.
+          The private key is shown <strong>only once</strong> — save it immediately.
+        </p>
+      </div>
+
+      {generateError && (
+        <div className="alert alert-error mb-4 text-sm">
+          <AlertCircle className="w-4 h-4 shrink-0" />
+          <span>{generateError}</span>
+        </div>
+      )}
+
+      <div className="flex flex-col sm:flex-row gap-3 justify-between">
+        <button onClick={onReset} className="btn btn-ghost btn-sm gap-2" style={{ color: 'var(--c-text-2)' }}>
+          <RotateCcw className="w-4 h-4" />
+          Start over
+        </button>
+        <button
+          className="btn btn-primary gap-2"
+          disabled={generatePending}
+          onClick={onGenerate}
+        >
+          {generatePending
+            ? <><span className="loading loading-spinner loading-sm" /> Generating…</>
+            : <><ShieldCheck className="w-4 h-4" /> Generate Certificate</>}
+        </button>
+      </div>
+    </div>
+  )
+}
+
 function CertCard({
   cert, copiedKey, onCopy, onDownload, onReset, resetLabel,
 }: {
@@ -720,7 +812,7 @@ function CertCard({
 }) {
   return (
     <div className="rounded-2xl p-6 sm:p-8" style={{ background: 'var(--c-card)', border: '1px solid oklch(62% 0.18 158 / 0.35)' }}>
-      <StepIndicator step={3} />
+      <StepIndicator step={4} />
       <div className="flex items-start gap-3 mt-6 mb-6">
         <div className="w-10 h-10 rounded-2xl flex items-center justify-center shrink-0" style={{ background: 'var(--c-success-soft)' }}>
           <ShieldCheck className="w-5 h-5" style={{ color: 'var(--c-success)' }} />

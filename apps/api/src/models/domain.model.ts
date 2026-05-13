@@ -1,6 +1,6 @@
 import { Schema, model, Document, Types } from 'mongoose'
 
-export type DomainStatus = 'pending' | 'pending_challenge' | 'active' | 'expired' | 'failed'
+export type DomainStatus = 'pending' | 'pending_challenge' | 'challenge_verified' | 'active' | 'expired' | 'failed'
 
 /** ACME challenge methods supported by this service. */
 export const ChallengeType = {
@@ -69,7 +69,7 @@ const domainSchema = new Schema<IDomain>(
     domainName: { type: String, required: true, unique: true, trim: true, lowercase: true },
     status: {
       type: String,
-      enum: ['pending', 'pending_challenge', 'active', 'expired', 'failed'],
+      enum: ['pending', 'pending_challenge', 'challenge_verified', 'active', 'expired', 'failed'],
       default: 'pending',
     },
     domainType:    { type: String, enum: Object.values(DomainType), required: true, default: DomainType.SINGLE },

@@ -1,7 +1,7 @@
 import { useState } from 'react'
 import { useParams, Link, useNavigate } from 'react-router-dom'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
-import { getDomainApi, initiateSslApi, recheckSslApi, deleteDomainApi } from '../api/ssl'
+import { getDomainApi, initiateSslApi, verifySslApi, generateSslApi, deleteDomainApi } from '../api/ssl'
 import { getApiError } from '../api/errors'
 import { useCooldown } from '../hooks/useCooldown'
 import { ChallengeType, DomainType } from '../types/ssl'
@@ -73,9 +73,17 @@ export default function DomainDetail() {
     },
   })
 
-  const recheckMutation = useMutation({
-    mutationFn: (d: string) => recheckSslApi(d),
+  const verifyMutation = useMutation({
+    mutationFn: (d: string) => verifySslApi(d),
     onSettled: () => recheckCD.start(),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['domain', id] })
+      qc.invalidateQueries({ queryKey: ['certificates'] })
+    },
+  })
+
+  const generateMutation = useMutation({
+    mutationFn: (d: string) => generateSslApi(d),
     onSuccess: (res) => {
       setCertModal({ domain: domain!.domainName, ...res.data })
       qc.invalidateQueries({ queryKey: ['domain', id] })
@@ -437,10 +445,10 @@ export default function DomainDetail() {
               </>
             )}
 
-            {recheckMutation.isError && (
+            {verifyMutation.isError && (
               <div className="alert alert-error mt-3 text-sm">
                 <AlertCircle className="w-4 h-4 shrink-0" />
-                <span>{getApiError(recheckMutation.error, 'Verification failed. Check that the challenge is correctly set up.')}</span>
+                <span>{getApiError(verifyMutation.error, 'Verification failed. Check that the challenge is correctly set up.')}</span>
               </div>
             )}
 
@@ -456,15 +464,69 @@ export default function DomainDetail() {
                 {initiateCD.isCooling ? `Wait ${initiateCD.secondsLeft}s` : 'Re-initiate Order'}
               </button>
               <button
-                onClick={() => recheckMutation.mutate(domain.domainName)}
-                disabled={recheckMutation.isPending || recheckCD.isCooling}
-                className="btn btn-success gap-2"
+                onClick={() => verifyMutation.mutate(domain.domainName)}
+                disabled={verifyMutation.isPending || recheckCD.isCooling}
+                className="btn btn-warning gap-2"
               >
-                {recheckMutation.isPending
+                {verifyMutation.isPending
                   ? <><span className="loading loading-spinner loading-sm" /> Verifying…</>
                   : recheckCD.isCooling
                   ? <><RefreshCw className="w-4 h-4" /> Wait {recheckCD.secondsLeft}s</>
-                  : <><ShieldCheck className="w-4 h-4" /> Verify &amp; Issue</>}
+                  : <><ShieldCheck className="w-4 h-4" /> Verify Ownership</>}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ── Challenge Verified — ready to generate ── */}
+      {domain.status === 'challenge_verified' && (
+        <div
+          className="rounded-2xl"
+          style={{ background: 'var(--c-card)', border: '1px solid oklch(62% 0.18 158 / 0.35)' }}
+        >
+          <div className="p-6">
+            <div className="flex items-start gap-3 mb-5">
+              <div
+                className="w-9 h-9 rounded-xl flex items-center justify-center shrink-0"
+                style={{ background: 'var(--c-success-soft)' }}
+              >
+                <ShieldCheck className="w-5 h-5" style={{ color: 'var(--c-success)' }} />
+              </div>
+              <div>
+                <p className="font-semibold" style={{ color: 'var(--c-text-1)' }}>Ownership Verified</p>
+                <p className="text-xs mt-0.5" style={{ color: 'var(--c-text-2)' }}>
+                  Let's Encrypt confirmed you control this domain. Generate the certificate to complete issuance.
+                </p>
+              </div>
+            </div>
+
+            <div
+              className="rounded-xl px-4 py-3 mb-4 flex items-start gap-2.5"
+              style={{ background: 'var(--c-surface)', border: '1px solid var(--c-border)' }}
+            >
+              <AlertCircle className="w-4 h-4 shrink-0 mt-0.5" style={{ color: 'var(--c-text-3)' }} />
+              <p className="text-xs" style={{ color: 'var(--c-text-2)' }}>
+                Generating creates a private key and CSR, then finalises the order. The private key is shown <strong>only once</strong> — save it immediately after generation.
+              </p>
+            </div>
+
+            {generateMutation.isError && (
+              <div className="alert alert-error mb-4 text-sm">
+                <AlertCircle className="w-4 h-4 shrink-0" />
+                <span>{getApiError(generateMutation.error, 'Certificate generation failed.')}</span>
+              </div>
+            )}
+
+            <div className="flex justify-end">
+              <button
+                onClick={() => generateMutation.mutate(domain.domainName)}
+                disabled={generateMutation.isPending}
+                className="btn btn-primary gap-2"
+              >
+                {generateMutation.isPending
+                  ? <><span className="loading loading-spinner loading-sm" /> Generating…</>
+                  : <><ShieldCheck className="w-4 h-4" /> Generate Certificate</>}
               </button>
             </div>
           </div>
@@ -654,11 +716,12 @@ function StatusBadge({ status, expiring }: { status: DomainStatus; expiring?: bo
     )
   }
   const map: Record<DomainStatus, { label: string; cls: string }> = {
-    active:            { label: 'Active',      cls: 'badge-success' },
-    pending:           { label: 'Pending',     cls: 'badge-neutral' },
-    pending_challenge: { label: 'Challenge Pending', cls: 'badge-warning' },
-    expired:           { label: 'Expired',     cls: 'badge-error'   },
-    failed:            { label: 'Failed',      cls: 'badge-error'   },
+    active:             { label: 'Active',            cls: 'badge-success' },
+    pending:            { label: 'Pending',           cls: 'badge-neutral' },
+    pending_challenge:  { label: 'Challenge Pending', cls: 'badge-warning' },
+    challenge_verified: { label: 'Verified',          cls: 'badge-info'    },
+    expired:            { label: 'Expired',           cls: 'badge-error'   },
+    failed:             { label: 'Failed',            cls: 'badge-error'   },
   }
   const { label, cls } = map[status]
   return <span className={`badge ${cls}`}>{label}</span>
