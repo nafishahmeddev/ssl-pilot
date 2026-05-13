@@ -1,17 +1,24 @@
 import { createFactory } from 'hono/factory'
 import { zValidator } from '@hono/zod-validator'
 import { z } from 'zod'
+import { isValidObjectId } from 'mongoose'
 import { acmeService } from '@src/services/acme.service'
-import { DomainModel, ChallengeType, DomainType } from '@src/models/domain.model'
+import { DomainModel, getPotentialWildcard } from '@src/models/domain.model'
+import { CertificateModel, ChallengeType } from '@src/models/certificate.model'
 import { ApiResponse } from '@src/shared/utils/response'
 import type { Env } from '@src/app'
+import type { Context } from 'hono'
 
 const factory = createFactory<Env>()
+
+function badId(c: Context, label: string) {
+  return ApiResponse.error(c, `Invalid ${label} ID.`, 'INVALID_ID', 400)
+}
 
 /**
  * Validates a fully-qualified domain name with optional wildcard prefix.
  * Accepts: example.com, sub.example.com, *.example.com
- * Rejects: *.*.example.com, -example.com, example (no TLD)
+ * Rejects: *.*.example.com, -example.com, bare labels
  */
 const FQDN_REGEX = /^(\*\.)?([a-zA-Z0-9]([a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?\.)+[a-zA-Z]{2,}$/
 
@@ -20,32 +27,117 @@ const fqdnField = z
   .min(3)
   .max(255)
   .refine((d) => FQDN_REGEX.test(d), {
-    message: 'Invalid domain format. Use example.com, sub.example.com, or *.example.com for wildcards.',
+    message: 'Invalid domain. Use example.com, sub.example.com, or *.example.com.',
   })
 
-const domainSchema = z.object({ domain: fqdnField })
-
+const certNameSchema = z.object({ certName: fqdnField })
 const initiateSchema = z.object({
-  domain:        fqdnField,
-  challengeType: z.enum([ChallengeType.DNS_01, ChallengeType.HTTP_01]).default(ChallengeType.DNS_01),
+  certName:          fqdnField,
+  challengeType:     z.enum([ChallengeType.DNS_01, ChallengeType.HTTP_01]).default(ChallengeType.DNS_01),
+  skipWildcardCheck: z.boolean().default(false),
 })
+
+// ── Wildcard coverage check ───────────────────────────────────────────────────
+
+/**
+ * GET /api/ssl/wildcard-check?certName=api.idexa.app
+ * Read-only. Checks if an active wildcard cert in this org covers the given name.
+ * Frontend calls this before initiating to offer the instant-adoption shortcut.
+ */
+export const wildcardCheckHandler = factory.createHandlers(
+  zValidator('query', z.object({ certName: fqdnField })),
+  async (c) => {
+    const { certName } = c.req.valid('query')
+    const orgId = c.get('organizationId')
+
+    const potentialWildcard = getPotentialWildcard(certName)
+    if (!potentialWildcard) {
+      return ApiResponse.success(c, { covered: false }, 'No wildcard can cover this domain.')
+    }
+
+    const wildcard = await CertificateModel.findOne(
+      {
+        certName:       potentialWildcard,
+        organizationId: orgId,
+        status:         'active',
+        expiryDate:     { $gt: new Date() },
+      },
+      { _id: 1, certName: 1, expiryDate: 1 },
+    ).lean()
+
+    if (!wildcard) {
+      return ApiResponse.success(c, { covered: false }, 'No active wildcard found.')
+    }
+
+    return ApiResponse.success(c, {
+      covered: true,
+      wildcard: {
+        id:         wildcard._id.toString(),
+        certName:   wildcard.certName,
+        expiryDate: wildcard.expiryDate?.toISOString(),
+      },
+    }, `Covered by active wildcard ${potentialWildcard}.`)
+  },
+)
+
+// ── Wildcard adoption ─────────────────────────────────────────────────────────
+
+/**
+ * POST /api/ssl/adopt-wildcard
+ * Instantly activates a subdomain by copying the cert/key from an existing
+ * active wildcard certificate. No ACME order is created.
+ */
+export const adoptWildcardHandler = factory.createHandlers(
+  zValidator('json', z.object({
+    certName:       fqdnField,
+    wildcardCertId: z.string().min(1),
+  })),
+  async (c) => {
+    const { certName, wildcardCertId } = c.req.valid('json')
+    const orgId = c.get('organizationId')
+
+    if (certName.startsWith('*.')) {
+      return ApiResponse.error(c, 'Wildcards cannot adopt other wildcards.', 'INVALID_CERT', 400)
+    }
+    if (!getPotentialWildcard(certName)) {
+      return ApiResponse.error(c, 'Apex domains cannot be covered by a wildcard.', 'NOT_COVERABLE', 400)
+    }
+
+    const existing = await CertificateModel.findOne(
+      { certName, organizationId: orgId },
+      { status: 1, expiryDate: 1 },
+    ).lean()
+
+    if (existing?.status === 'active' && (!existing.expiryDate || existing.expiryDate > new Date())) {
+      return ApiResponse.error(c, 'Certificate already active. Delete it first to replace it.', 'CERT_ALREADY_ACTIVE', 409)
+    }
+
+    try {
+      const result = await acmeService.adoptWildcard(certName, orgId, wildcardCertId)
+      return ApiResponse.success(c, result, 'Certificate activated via wildcard.')
+    } catch (error: unknown) {
+      return ApiResponse.error(c, (error as Error).message, 'ADOPT_ERROR', 500)
+    }
+  },
+)
+
+// ── Initiate ACME order ───────────────────────────────────────────────────────
 
 /**
  * POST /api/ssl/initiate
- * Creates a new ACME order. Returns dns-01 TXT record info or http-01 file
- * challenge info depending on the requested challengeType (default: dns-01).
- * Also clears any stale renewalError from a previously failed auto-renewal.
+ * Creates a new ACME order for a cert name.
+ * Rejects if an active wildcard already covers this cert (use adopt-wildcard instead).
  */
 export const initiateSslHandler = factory.createHandlers(
   zValidator('json', initiateSchema),
   async (c) => {
-    const { domain, challengeType } = c.req.valid('json')
+    const { certName, challengeType, skipWildcardCheck } = c.req.valid('json')
     const orgId = c.get('organizationId')
     const email = c.get('userEmail')
 
-    const domainType = domain.startsWith('*.') ? DomainType.WILDCARD : DomainType.SINGLE
+    const isWildcard = certName.startsWith('*.')
 
-    if (domainType === DomainType.WILDCARD && challengeType === ChallengeType.HTTP_01) {
+    if (isWildcard && challengeType === ChallengeType.HTTP_01) {
       return ApiResponse.error(
         c,
         'Wildcard certificates require DNS-01 — HTTP-01 is forbidden by RFC 8555.',
@@ -54,176 +146,250 @@ export const initiateSslHandler = factory.createHandlers(
       )
     }
 
+    // Block re-initiation for a cert that is already active and not yet expired
+    const existing = await CertificateModel.findOne(
+      { certName, organizationId: orgId },
+      { status: 1, expiryDate: 1 },
+    ).lean()
+
+    if (existing?.status === 'active' && (!existing.expiryDate || existing.expiryDate > new Date())) {
+      return ApiResponse.error(
+        c,
+        'Certificate is already active. Delete it first or wait for expiry.',
+        'CERT_ALREADY_ACTIVE',
+        409,
+      )
+    }
+
+    // Block if an active wildcard covers this cert — unless user explicitly chose dedicated
+    if (!skipWildcardCheck) {
+      const potentialWildcard = getPotentialWildcard(certName)
+      if (potentialWildcard) {
+        const covering = await CertificateModel.exists({
+          certName:       potentialWildcard,
+          organizationId: orgId,
+          status:         'active',
+          expiryDate:     { $gt: new Date() },
+        })
+        if (covering) {
+          return ApiResponse.error(
+            c,
+            `Active wildcard (${potentialWildcard}) covers this domain. Use adopt-wildcard to reuse it instantly, or choose "Dedicated Cert" to issue independently.`,
+            'WILDCARD_COVERS_CERT',
+            409,
+          )
+        }
+      }
+    }
+
     try {
-      const challengeInfo = await acmeService.initiateOrder(domain, orgId, email, challengeType, domainType)
+      const challengeInfo = await acmeService.initiateOrder(certName, orgId, email, challengeType)
       const msg = challengeType === ChallengeType.HTTP_01
         ? 'Order initiated. Serve the challenge file at the provided URL.'
         : 'Order initiated. Add the TXT record to your DNS.'
       return ApiResponse.success(c, challengeInfo, msg)
     } catch (error: unknown) {
-      const err = error as NodeJS.ErrnoException & { code?: number }
-      if (err.code === 11000) {
-        return ApiResponse.error(c, 'Domain already registered by another organization', 'DOMAIN_CONFLICT', 409)
-      }
       return ApiResponse.error(c, (error as Error).message, 'INITIATE_ERROR', 500)
     }
-  }
+  },
 )
 
-const VERIFY_TTL_MS = 5 * 60 * 1000 // 5 minutes between challenge-verify attempts
+// ── Verify challenge ──────────────────────────────────────────────────────────
+
+const VERIFY_TTL_MS = 5 * 60 * 1000
 
 /**
  * POST /api/ssl/verify
- * Tells Let's Encrypt to validate the DNS/HTTP challenge.
- * Domain must be in `pending_challenge` state.
- * On success transitions domain to `challenge_verified`.
- * TTL: 5 minutes between retries (ACME rate-limits anyway).
+ * Tells Let's Encrypt to validate the stored challenge.
+ * Cert must be in `pending_challenge` state.
+ * On success transitions to `challenge_verified`.
  */
 export const verifyChallengeHandler = factory.createHandlers(
-  zValidator('json', domainSchema),
+  zValidator('json', certNameSchema),
   async (c) => {
-    const { domain } = c.req.valid('json')
+    const { certName } = c.req.valid('json')
     const orgId = c.get('organizationId')
     const email = c.get('userEmail')
 
     try {
-      const domainDoc = await DomainModel.findOne(
-        { domainName: domain, organizationId: orgId },
+      const certDoc = await CertificateModel.findOne(
+        { certName, organizationId: orgId },
         { _id: 1, status: 1, lastChecked: 1 },
       ).lean()
 
-      if (!domainDoc) {
-        return ApiResponse.error(c, 'Domain not found', 'NOT_FOUND', 404)
-      }
-      if (domainDoc.status !== 'pending_challenge') {
+      if (!certDoc) return ApiResponse.error(c, 'Certificate not found.', 'NOT_FOUND', 404)
+      if (certDoc.status !== 'pending_challenge') {
         return ApiResponse.error(
           c,
-          `Domain is not awaiting verification (current status: ${domainDoc.status})`,
+          `Certificate is not awaiting verification (status: ${certDoc.status}).`,
           'INVALID_STATE',
           409,
         )
       }
 
-      if (domainDoc.lastChecked) {
-        const elapsed = Date.now() - domainDoc.lastChecked.getTime()
+      if (certDoc.lastChecked) {
+        const elapsed = Date.now() - certDoc.lastChecked.getTime()
         if (elapsed < VERIFY_TTL_MS) {
-          const timeLeft = Math.ceil((VERIFY_TTL_MS - elapsed) / 1000)
-          return ApiResponse.error(
-            c,
-            `Please wait ${timeLeft} seconds before retrying verification.`,
-            'TTL_BLOCK',
-            429,
-          )
+          const wait = Math.ceil((VERIFY_TTL_MS - elapsed) / 1000)
+          return ApiResponse.error(c, `Please wait ${wait}s before retrying.`, 'TTL_BLOCK', 429)
         }
       }
 
-      await DomainModel.updateOne({ _id: domainDoc._id }, { $set: { lastChecked: new Date() } })
+      await CertificateModel.updateOne({ _id: certDoc._id }, { $set: { lastChecked: new Date() } })
+      await acmeService.verifyChallenge(certName, orgId, email)
 
-      await acmeService.verifyChallenge(domain, orgId, email)
-      return ApiResponse.success(c, { status: 'challenge_verified' }, 'Challenge verified. You can now generate the certificate.')
+      return ApiResponse.success(c, { status: 'challenge_verified' }, 'Challenge verified. Generate the certificate.')
     } catch (error: unknown) {
       return ApiResponse.error(c, (error as Error).message, 'VERIFY_ERROR', 500)
     }
-  }
+  },
 )
+
+// ── Generate certificate ──────────────────────────────────────────────────────
 
 /**
  * POST /api/ssl/generate
  * Finalises the ACME order and issues the certificate.
- * Domain must be in `challenge_verified` state.
- * On success transitions domain to `active` and returns cert + key PEM.
+ * Cert must be in `challenge_verified` state.
  */
 export const generateCertHandler = factory.createHandlers(
-  zValidator('json', domainSchema),
+  zValidator('json', certNameSchema),
   async (c) => {
-    const { domain } = c.req.valid('json')
+    const { certName } = c.req.valid('json')
     const orgId = c.get('organizationId')
     const email = c.get('userEmail')
 
     try {
-      const domainDoc = await DomainModel.findOne(
-        { domainName: domain, organizationId: orgId },
+      const certDoc = await CertificateModel.findOne(
+        { certName, organizationId: orgId },
         { status: 1 },
       ).lean()
 
-      if (!domainDoc) {
-        return ApiResponse.error(c, 'Domain not found', 'NOT_FOUND', 404)
-      }
-      if (domainDoc.status !== 'challenge_verified') {
+      if (!certDoc) return ApiResponse.error(c, 'Certificate not found.', 'NOT_FOUND', 404)
+      if (certDoc.status !== 'challenge_verified') {
         return ApiResponse.error(
           c,
-          `Domain challenge has not been verified yet (current status: ${domainDoc.status})`,
+          `Challenge not verified yet (status: ${certDoc.status}).`,
           'INVALID_STATE',
           409,
         )
       }
 
-      const result = await acmeService.generateCertificate(domain, orgId, email)
+      const result = await acmeService.generateCertificate(certName, orgId, email)
       return ApiResponse.success(c, result, 'Certificate issued successfully.')
     } catch (error: unknown) {
       return ApiResponse.error(c, (error as Error).message, 'GENERATE_ERROR', 500)
     }
-  }
+  },
 )
 
+// ── List domains with their certificates ──────────────────────────────────────
+
 /**
- * GET /api/ssl/certificates
- * Lists all domains for the authenticated organisation.
- * Includes renewalError so the admin panel can show the manual-retry banner.
+ * GET /api/ssl/domains
+ * Returns all root domains for the org, each with its associated certificates.
  */
-export const listCertificatesHandler = factory.createHandlers(async (c) => {
+export const listDomainsHandler = factory.createHandlers(async (c) => {
   const orgId = c.get('organizationId')
 
   try {
-    const domains = await DomainModel.find({ organizationId: orgId })
-      .select('domainName status domainType challengeType txtRecordName txtRecordValue httpChallengeToken httpChallengeKeyAuth renewalError lastChecked expiryDate createdAt updatedAt')
-      .sort({ createdAt: -1 })
-      .lean()
+    const [domains, certs] = await Promise.all([
+      DomainModel.find({ organizationId: orgId })
+        .sort({ name: 1 })
+        .lean(),
+      CertificateModel.find({ organizationId: orgId })
+        .select('-certPem -keyPem')
+        .sort({ certName: 1 })
+        .lean(),
+    ])
 
-    return ApiResponse.success(c, { certificates: domains }, 'Certificates fetched successfully.')
+    const certsByDomainId = new Map<string, typeof certs>()
+    for (const cert of certs) {
+      const key = cert.domainId.toString()
+      if (!certsByDomainId.has(key)) certsByDomainId.set(key, [])
+      certsByDomainId.get(key)!.push(cert)
+    }
+
+    const result = domains.map((d) => ({
+      ...d,
+      certs: certsByDomainId.get(d._id.toString()) ?? [],
+    }))
+
+    return ApiResponse.success(c, { domains: result }, 'Domains fetched.')
   } catch (error: unknown) {
     return ApiResponse.error(c, (error as Error).message, 'LIST_ERROR', 500)
   }
 })
 
+// ── Certificate detail ────────────────────────────────────────────────────────
+
 /**
- * GET /api/ssl/domain/:id
- * Returns the full domain document (including certPem, renewalError, all ACME metadata)
- * for the given domain ID, scoped to the authenticated organisation.
+ * GET /api/ssl/certs/:id
+ * Returns the full certificate document including PEM.
  */
-export const getDomainHandler = factory.createHandlers(async (c) => {
-  const id = c.req.param('id')
+export const getCertHandler = factory.createHandlers(async (c) => {
+  const id    = c.req.param('id')
   const orgId = c.get('organizationId')
 
+  if (!isValidObjectId(id)) return badId(c, 'certificate')
+
   try {
-    const domain = await DomainModel.findOne({ _id: id, organizationId: orgId }).lean()
-
-    if (!domain) {
-      return ApiResponse.error(c, 'Domain not found', 'DOMAIN_NOT_FOUND', 404)
-    }
-
-    return ApiResponse.success(c, domain, 'Domain fetched.')
+    const cert = await CertificateModel.findOne({ _id: id, organizationId: orgId }).lean()
+    if (!cert) return ApiResponse.error(c, 'Certificate not found.', 'NOT_FOUND', 404)
+    return ApiResponse.success(c, cert, 'Certificate fetched.')
   } catch (error: unknown) {
     return ApiResponse.error(c, (error as Error).message, 'FETCH_ERROR', 500)
   }
 })
 
+// ── Delete certificate ────────────────────────────────────────────────────────
+
 /**
- * DELETE /api/ssl/domain/:id
- * Deletes a domain document.
+ * DELETE /api/ssl/certs/:id
+ * Deletes a single certificate.
+ * If it was the last cert under its domain, the domain record is also removed.
+ */
+export const deleteCertHandler = factory.createHandlers(async (c) => {
+  const id    = c.req.param('id')
+  const orgId = c.get('organizationId')
+
+  if (!isValidObjectId(id)) return badId(c, 'certificate')
+
+  try {
+    const cert = await CertificateModel.findOneAndDelete({ _id: id, organizationId: orgId })
+    if (!cert) return ApiResponse.error(c, 'Certificate not found.', 'NOT_FOUND', 404)
+
+    // Clean up the root Domain record if no certs remain
+    const remaining = await CertificateModel.countDocuments({ domainId: cert.domainId })
+    if (remaining === 0) {
+      await DomainModel.deleteOne({ _id: cert.domainId })
+    }
+
+    return ApiResponse.success(c, null, 'Certificate deleted.')
+  } catch (error: unknown) {
+    return ApiResponse.error(c, (error as Error).message, 'DELETE_ERROR', 500)
+  }
+})
+
+// ── Delete root domain ────────────────────────────────────────────────────────
+
+/**
+ * DELETE /api/ssl/domains/:id
+ * Deletes a root domain and all its certificates.
  */
 export const deleteDomainHandler = factory.createHandlers(async (c) => {
-  const id = c.req.param('id')
+  const id    = c.req.param('id')
   const orgId = c.get('organizationId')
+
+  if (!isValidObjectId(id)) return badId(c, 'domain')
 
   try {
     const domain = await DomainModel.findOneAndDelete({ _id: id, organizationId: orgId })
+    if (!domain) return ApiResponse.error(c, 'Domain not found.', 'NOT_FOUND', 404)
 
-    if (!domain) {
-      return ApiResponse.error(c, 'Domain not found or unauthorized', 'DELETE_ERROR', 404)
-    }
+    await CertificateModel.deleteMany({ domainId: id })
 
-    return ApiResponse.success(c, null, 'Domain deleted successfully.')
+    return ApiResponse.success(c, null, 'Domain and all certificates deleted.')
   } catch (error: unknown) {
     return ApiResponse.error(c, (error as Error).message, 'DELETE_ERROR', 500)
   }

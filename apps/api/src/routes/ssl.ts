@@ -1,11 +1,14 @@
 import { Hono } from 'hono'
 import { authMiddleware } from '@src/shared/middlewares/auth.middleware'
 import {
+  wildcardCheckHandler,
+  adoptWildcardHandler,
   initiateSslHandler,
   verifyChallengeHandler,
   generateCertHandler,
-  listCertificatesHandler,
-  getDomainHandler,
+  listDomainsHandler,
+  getCertHandler,
+  deleteCertHandler,
   deleteDomainHandler,
 } from '@src/controllers/ssl.controller'
 import type { Env } from '@src/app'
@@ -14,11 +17,19 @@ const router = new Hono<Env>()
 
 router.use('*', authMiddleware)
 
-router.get('/certificates', ...listCertificatesHandler)
-router.get('/domain/:id',   ...getDomainHandler)
-router.delete('/domain/:id', ...deleteDomainHandler)
-router.post('/initiate',    ...initiateSslHandler)
-router.post('/verify',      ...verifyChallengeHandler)
-router.post('/generate',    ...generateCertHandler)
+// Domains
+router.get('/domains',       ...listDomainsHandler)
+router.delete('/domains/:id',...deleteDomainHandler)
+
+// Certificates
+router.get('/certs/:id',     ...getCertHandler)
+router.delete('/certs/:id',  ...deleteCertHandler)
+
+// ACME flow
+router.get('/wildcard-check',...wildcardCheckHandler)
+router.post('/adopt-wildcard',...adoptWildcardHandler)
+router.post('/initiate',     ...initiateSslHandler)
+router.post('/verify',       ...verifyChallengeHandler)
+router.post('/generate',     ...generateCertHandler)
 
 export default router

@@ -1,22 +1,70 @@
 import type { ApiResponse } from './api'
 
-export type DomainStatus = 'pending' | 'pending_challenge' | 'challenge_verified' | 'active' | 'expired' | 'failed'
+// ── Enums ──────────────────────────────────────────────────────────────────────
 
-// ── Challenge types ────────────────────────────────────────────────────────────
+export type CertStatus = 'pending' | 'pending_challenge' | 'challenge_verified' | 'active' | 'expired' | 'failed'
 
 export const ChallengeType = {
   DNS_01:  'dns-01',
   HTTP_01: 'http-01',
 } as const
-
 export type ChallengeType = (typeof ChallengeType)[keyof typeof ChallengeType]
 
-export const DomainType = {
+export const CertType = {
   WILDCARD: 'wildcard',
   SINGLE:   'single',
+  APEX:     'apex',
 } as const
+export type CertType = (typeof CertType)[keyof typeof CertType]
 
-export type DomainType = (typeof DomainType)[keyof typeof DomainType]
+// ── Domain (root/registrable) ──────────────────────────────────────────────────
+
+/** Root domain record — the grouping container (e.g. 'idexa.app'). */
+export interface DomainRecord {
+  _id: string
+  organizationId: string
+  name: string          // e.g. 'idexa.app'
+  createdAt: string
+  updatedAt: string
+}
+
+/** Domain with all its certificate records (returned by list endpoint). */
+export interface DomainWithCerts extends DomainRecord {
+  certs: CertRecord[]
+}
+
+// ── Certificate ────────────────────────────────────────────────────────────────
+
+/** Certificate record without PEM (used in list views). */
+export interface CertRecord {
+  _id: string
+  domainId: string
+  organizationId: string
+  /** The specific domain this cert covers — e.g. '*.idexa.app', 'api.idexa.app'. */
+  certName: string
+  certType: CertType
+  status: CertStatus
+  challengeType?: ChallengeType
+  /** Set when cert was adopted from a wildcard (no ACME order). */
+  coveredByWildcardId?: string
+  txtRecordName?: string
+  txtRecordValue?: string
+  httpChallengeToken?: string
+  httpChallengeKeyAuth?: string
+  renewalError?: string
+  expiryDate?: string
+  issuedAt?: string
+  createdAt: string
+  updatedAt: string
+}
+
+/** Full certificate with PEM — returned by the detail endpoint. */
+export interface CertDetail extends CertRecord {
+  certPem?: string
+  keyPem?: string
+}
+
+// ── Challenge info (returned from initiate) ────────────────────────────────────
 
 export type DnsChallengeInfo = {
   challengeType: typeof ChallengeType.DNS_01
@@ -26,73 +74,38 @@ export type DnsChallengeInfo = {
 
 export type HttpChallengeInfo = {
   challengeType: typeof ChallengeType.HTTP_01
-  /** ACME challenge token — path segment in the well-known URL. */
   token: string
-  /** Exact content to serve at the challenge URL. */
   keyAuth: string
 }
 
-/** Discriminated union — narrow on `challengeType` to access type-specific fields. */
 export type ChallengeInfo = DnsChallengeInfo | HttpChallengeInfo
 
-// ── Issued certificate ─────────────────────────────────────────────────────────
+// ── Issued certificate (returned from generate / adopt-wildcard) ───────────────
 
 export interface IssuedCertificate {
   cert: string
   key: string
 }
 
-// ── Domain records ─────────────────────────────────────────────────────────────
+// ── Wildcard coverage (returned from wildcard-check) ──────────────────────────
 
-/** Lightweight record returned by the list endpoint. */
-export interface DomainRecord {
-  _id: string
-  domainName: string
-  status: DomainStatus
-  domainType: DomainType
-  challengeType?: ChallengeType
-  txtRecordName?: string
-  txtRecordValue?: string
-  httpChallengeToken?: string
-  httpChallengeKeyAuth?: string
-  /** Present when the cron failed to auto-renew; user must trigger manually. */
-  renewalError?: string
+export interface WildcardInfo {
+  id: string
+  certName: string
   expiryDate?: string
-  createdAt: string
-  updatedAt: string
 }
 
-/** Full document returned by the single-domain detail endpoint. */
-export interface DomainDetail {
-  _id: string
-  organizationId: string
-  domainName: string
-  status: DomainStatus
-  domainType: DomainType
-  challengeType?: ChallengeType
-  acmeOrderUrl?: string
-  acmeChallengeUrl?: string
-  txtRecordName?: string
-  txtRecordValue?: string
-  httpChallengeToken?: string
-  httpChallengeKeyAuth?: string
-  /** PEM-encoded certificate from last successful issuance. */
-  certPem?: string
-  /** PEM-encoded private key from last successful issuance. */
-  keyPem?: string
-  /** Error from last failed auto-renewal (cron). Cleared on successful manual initiate. */
-  renewalError?: string
-  renewalFailedAt?: string
-  expiryDate?: string
-  lastChecked?: string
-  createdAt: string
-  updatedAt: string
+export interface WildcardCheckData {
+  covered: boolean
+  wildcard?: WildcardInfo
 }
 
 // ── API response aliases ───────────────────────────────────────────────────────
 
-export type InitiateSslResponse   = ApiResponse<ChallengeInfo>
-export type VerifySslResponse     = ApiResponse<{ status: 'challenge_verified' }>
-export type GenerateSslResponse   = ApiResponse<IssuedCertificate>
-export type CertificatesResponse  = ApiResponse<{ certificates: DomainRecord[] }>
-export type DomainDetailResponse  = ApiResponse<DomainDetail>
+export type DomainsResponse        = ApiResponse<{ domains: DomainWithCerts[] }>
+export type CertDetailResponse     = ApiResponse<CertDetail>
+export type InitiateSslResponse    = ApiResponse<ChallengeInfo>
+export type VerifySslResponse      = ApiResponse<{ status: 'challenge_verified' }>
+export type GenerateSslResponse    = ApiResponse<IssuedCertificate>
+export type AdoptWildcardResponse  = ApiResponse<IssuedCertificate>
+export type WildcardCheckResponse  = ApiResponse<WildcardCheckData>
