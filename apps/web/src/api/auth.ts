@@ -31,3 +31,20 @@ export const refreshTokenApi = async (): Promise<string> => {
   )
   return response.data.data.accessToken
 }
+
+export interface UserProfile {
+  name: string
+  email: string
+  company: string
+  role: string
+}
+
+export const getProfileApi = async (): Promise<ApiResponse<UserProfile>> => {
+  const response = await apiClient.get<ApiResponse<UserProfile>>('/api/auth/me')
+  return response.data
+}
+
+export const changePasswordApi = async (data: any): Promise<ApiResponse<null>> => {
+  const response = await apiClient.post<ApiResponse<null>>('/api/auth/change-password', data)
+  return response.data
+}

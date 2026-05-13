@@ -1,18 +1,27 @@
 import { Suspense } from 'react'
 import { Outlet, NavLink, useNavigate } from 'react-router-dom'
 import { useSelector } from '@tanstack/react-store'
+import { useQuery } from '@tanstack/react-query'
 import { authStore, setAccessToken } from '../../store/auth'
-import { logoutApi } from '../../api/auth'
-import { Shield, LayoutDashboard, ShieldCheck, LogOut, Menu } from 'lucide-react'
+import { logoutApi, getProfileApi } from '../../api/auth'
+import { Shield, LayoutDashboard, ShieldCheck, LogOut, Menu, User, Building } from 'lucide-react'
 
 const NAV = [
   { to: '/dashboard', label: 'Dashboard', icon: LayoutDashboard },
   { to: '/certificates', label: 'Certificates', icon: ShieldCheck },
+  { to: '/profile', label: 'Profile', icon: User },
 ]
 
 export default function AppLayout() {
   const navigate = useNavigate()
   const isAuthenticated = useSelector(authStore, (s) => s.isAuthenticated)
+
+  const { data: profileData } = useQuery({
+    queryKey: ['profile'],
+    queryFn: getProfileApi,
+    enabled: isAuthenticated,
+  })
+  const profile = profileData?.data
 
   if (!isAuthenticated) return null
 
@@ -121,20 +130,32 @@ export default function AppLayout() {
 
           {/* User */}
           <div className="p-4 shrink-0" style={{ borderTop: '1px solid var(--c-border)' }}>
-            <div className="flex items-center gap-3">
+            <div
+              className="p-3 rounded-xl flex items-center gap-3"
+              style={{ background: 'var(--c-page)', border: '1px solid var(--c-border)' }}
+            >
               <div
-                className="w-8 h-8 rounded-full flex items-center justify-center text-xs font-bold shrink-0"
+                className="w-10 h-10 rounded-xl flex items-center justify-center text-sm font-bold shrink-0"
                 style={{
                   background: 'var(--c-primary-soft)',
                   color: 'var(--c-primary)',
-                  border: '1px solid var(--c-primary-mid)',
                 }}
               >
-                A
+                {profile?.name ? profile.name.charAt(0).toUpperCase() : 'U'}
               </div>
               <div className="flex-1 min-w-0">
-                <p className="text-sm font-medium leading-none truncate" style={{ color: 'var(--c-text-1)' }}>Admin</p>
-                <p className="text-xs mt-1 truncate" style={{ color: 'var(--c-text-3)' }}>Administrator</p>
+                <p className="text-sm font-semibold truncate" style={{ color: 'var(--c-text-1)' }}>
+                  {profile?.name || 'Loading…'}
+                </p>
+                <p className="text-xs truncate" style={{ color: 'var(--c-text-2)' }}>
+                  {profile?.email || '…'}
+                </p>
+                <div className="flex items-center gap-1 mt-0.5">
+                  <Building className="w-3 h-3" style={{ color: 'var(--c-text-3)' }} />
+                  <p className="text-xs truncate" style={{ color: 'var(--c-text-3)' }}>
+                    {profile?.company || '…'}
+                  </p>
+                </div>
               </div>
             </div>
           </div>
