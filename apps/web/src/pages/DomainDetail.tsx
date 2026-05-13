@@ -20,6 +20,8 @@ import {
   Clock,
   X,
   Trash2,
+  BookOpen,
+  ChevronDown,
 } from 'lucide-react'
 
 interface CertModal extends IssuedCertificate {
@@ -652,6 +654,11 @@ export default function DomainDetail() {
         </>
       )}
 
+      {/* ── Installation Guide (secondary — collapsible, only when active) ── */}
+      {domain.status === 'active' && (
+        <InstallGuide domainName={domain.domainName} />
+      )}
+
       {/* ── Actions (failed / expired without renewalError) ── */}
       {(domain.status === 'failed' || (domain.status === 'expired' && !domain.renewalError)) && (
         <div
@@ -801,6 +808,192 @@ function CertModal({
         </div>
       </div>
       <div className="modal-backdrop" onClick={onClose} />
+    </div>
+  )
+}
+
+// ── Installation Guide ────────────────────────────────────────────────────────
+
+type Platform = 'nginx' | 'apache' | 'caddy' | 'nodejs' | 'haproxy'
+
+function buildConfigs(domain: string): Record<Platform, { label: string; filename: string; code: string; note?: string }> {
+  const crt = `/etc/ssl/certs/${domain}.crt`
+  const key = `/etc/ssl/private/${domain}.key`
+  const pem = `/etc/ssl/private/${domain}.pem`
+
+  return {
+    nginx: {
+      label: 'Nginx', filename: 'nginx.conf',
+      code:
+`server {
+    listen 443 ssl;
+    server_name ${domain};
+
+    ssl_certificate     ${crt};
+    ssl_certificate_key ${key};
+    ssl_protocols       TLSv1.2 TLSv1.3;
+    ssl_ciphers         HIGH:!aNULL:!MD5;
+    ssl_prefer_server_ciphers on;
+
+    # ... your location blocks
+}
+
+server {
+    listen 80;
+    server_name ${domain};
+    return 301 https://$host$request_uri;
+}`,
+    },
+    apache: {
+      label: 'Apache', filename: 'vhost.conf',
+      code:
+`<VirtualHost *:443>
+    ServerName ${domain}
+
+    SSLEngine on
+    SSLCertificateFile    ${crt}
+    SSLCertificateKeyFile ${key}
+
+    # ... your directory config
+</VirtualHost>
+
+<VirtualHost *:80>
+    ServerName ${domain}
+    Redirect permanent / https://${domain}/
+</VirtualHost>`,
+    },
+    caddy: {
+      label: 'Caddy', filename: 'Caddyfile',
+      code:
+`${domain} {
+    tls ${crt} ${key}
+
+    # ... your directives
+}`,
+    },
+    nodejs: {
+      label: 'Node.js', filename: 'server.js',
+      code:
+`import https from 'https'
+import fs    from 'fs'
+
+const server = https.createServer({
+  cert: fs.readFileSync('${crt}'),
+  key:  fs.readFileSync('${key}'),
+}, app)
+
+server.listen(443)`,
+    },
+    haproxy: {
+      label: 'HAProxy', filename: 'haproxy.cfg',
+      note: `HAProxy needs cert + key combined:\n  cat ${crt} ${key} > ${pem}`,
+      code:
+`frontend https_front
+    bind *:443 ssl crt ${pem}
+    default_backend app_servers
+
+frontend http_front
+    bind *:80
+    redirect scheme https code 301`,
+    },
+  }
+}
+
+function InstallGuide({ domainName }: { domainName: string }) {
+  const [isOpen, setIsOpen]   = useState(false)
+  const [platform, setPlatform] = useState<Platform>('nginx')
+  const [copied, setCopied]   = useState(false)
+
+  const configs  = buildConfigs(domainName)
+  const current  = configs[platform]
+
+  const handleCopy = async () => {
+    await navigator.clipboard.writeText(current.code)
+    setCopied(true)
+    setTimeout(() => setCopied(false), 2000)
+  }
+
+  return (
+    <div className="rounded-2xl overflow-hidden" style={{ border: '1px solid var(--c-border)' }}>
+
+      {/* Toggle header — visually secondary */}
+      <button
+        className="w-full flex items-center justify-between px-5 py-3.5 text-left transition-colors"
+        style={{ background: 'var(--c-surface)' }}
+        onClick={() => setIsOpen(o => !o)}
+      >
+        <div className="flex items-center gap-2">
+          <BookOpen className="w-3.5 h-3.5 shrink-0" style={{ color: 'var(--c-text-3)' }} />
+          <span className="text-xs font-medium" style={{ color: 'var(--c-text-2)' }}>Installation Guide</span>
+          <span className="text-xs hidden sm:inline" style={{ color: 'var(--c-text-3)' }}>— configure Nginx, Apache, Caddy…</span>
+        </div>
+        <ChevronDown
+          className="w-3.5 h-3.5 shrink-0 transition-transform"
+          style={{ color: 'var(--c-text-3)', transform: isOpen ? 'rotate(180deg)' : 'none' }}
+        />
+      </button>
+
+      {isOpen && (
+        <div className="p-5" style={{ background: 'var(--c-card)' }}>
+          <p className="text-xs mb-4" style={{ color: 'var(--c-text-3)' }}>
+            Upload your downloaded <span className="font-mono">.crt</span> and <span className="font-mono">.key</span> files to the server, then apply the snippet for your platform.
+          </p>
+
+          {/* Platform pills */}
+          <div className="flex flex-wrap gap-1.5 mb-4">
+            {(Object.keys(configs) as Platform[]).map((key) => (
+              <button
+                key={key}
+                onClick={() => setPlatform(key)}
+                className="px-3 py-1 rounded-lg text-xs font-medium transition-all"
+                style={
+                  platform === key
+                    ? { background: 'var(--c-primary-soft)', color: 'var(--c-primary)', border: '1px solid var(--c-primary-mid)' }
+                    : { background: 'var(--c-surface)', color: 'var(--c-text-2)', border: '1px solid var(--c-border)' }
+                }
+              >
+                {configs[key].label}
+              </button>
+            ))}
+          </div>
+
+          {/* HAProxy note */}
+          {current.note && (
+            <div
+              className="rounded-lg px-3 py-2 mb-3 font-mono text-xs whitespace-pre"
+              style={{ background: 'var(--c-surface)', color: 'var(--c-text-2)', border: '1px solid var(--c-border)' }}
+            >
+              {current.note}
+            </div>
+          )}
+
+          {/* Code block */}
+          <div className="rounded-xl overflow-hidden" style={{ border: '1px solid var(--c-border)' }}>
+            <div
+              className="flex items-center justify-between px-4 py-2"
+              style={{ background: 'var(--c-surface-2)', borderBottom: '1px solid var(--c-border)' }}
+            >
+              <span className="text-xs font-mono" style={{ color: 'var(--c-text-3)' }}>{current.filename}</span>
+              <button onClick={handleCopy} className="btn btn-ghost btn-xs gap-1.5">
+                {copied
+                  ? <><Check className="w-3 h-3 text-success" /> Copied</>
+                  : <><Copy className="w-3 h-3" /> Copy</>}
+              </button>
+            </div>
+            <pre
+              className="p-4 text-xs overflow-x-auto leading-relaxed"
+              style={{ background: 'var(--c-code-bg)', color: 'var(--c-text-2)' }}
+            >
+              {current.code}
+            </pre>
+          </div>
+
+          <p className="text-xs mt-3" style={{ color: 'var(--c-text-3)' }}>
+            After applying, reload your server and test with{' '}
+            <span className="font-mono">curl -I https://{domainName}</span>
+          </p>
+        </div>
+      )}
     </div>
   )
 }

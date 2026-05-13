@@ -44,7 +44,7 @@ export const getProfileApi = async (): Promise<ApiResponse<UserProfile>> => {
   return response.data
 }
 
-export const changePasswordApi = async (data: any): Promise<ApiResponse<null>> => {
+export const changePasswordApi = async (data: { currentPassword: string; newPassword: string }): Promise<ApiResponse<null>> => {
   const response = await apiClient.post<ApiResponse<null>>('/api/auth/change-password', data)
   return response.data
 }

@@ -228,22 +228,24 @@ function StatCard({ stat, isLoading }: { stat: StatDef; isLoading: boolean }) {
 
 function StatusDot({ status }: { status: DomainStatus }) {
   const color: Record<DomainStatus, string> = {
-    active:            'var(--c-success)',
-    pending:           'var(--c-text-3)',
-    pending_challenge: 'var(--c-warning)',
-    expired:           'var(--c-error)',
-    failed:            'var(--c-error)',
+    active:             'var(--c-success)',
+    pending:            'var(--c-text-3)',
+    pending_challenge:  'var(--c-warning)',
+    challenge_verified: 'var(--c-info)',
+    expired:            'var(--c-error)',
+    failed:             'var(--c-error)',
   }
   return <span className="w-2 h-2 rounded-full inline-block" style={{ background: color[status] }} />
 }
 
 function StatusBadge({ status }: { status: DomainStatus }) {
   const map: Record<DomainStatus, { label: string; cls: string }> = {
-    active:            { label: 'Active',      cls: 'badge-success' },
-    pending:           { label: 'Pending',     cls: 'badge-neutral' },
-    pending_challenge: { label: 'DNS Pending', cls: 'badge-warning' },
-    expired:           { label: 'Expired',     cls: 'badge-error' },
-    failed:            { label: 'Failed',      cls: 'badge-error' },
+    active:             { label: 'Active',            cls: 'badge-success' },
+    pending:            { label: 'Pending',           cls: 'badge-neutral' },
+    pending_challenge:  { label: 'Challenge Pending', cls: 'badge-warning' },
+    challenge_verified: { label: 'Verified',          cls: 'badge-info'    },
+    expired:            { label: 'Expired',           cls: 'badge-error'   },
+    failed:             { label: 'Failed',            cls: 'badge-error'   },
   }
   const { label, cls } = map[status]
   return <span className={`badge badge-sm ${cls}`}>{label}</span>
