@@ -4,7 +4,7 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { getCertApi, initiateSslApi, verifySslApi, generateSslApi, deleteCertApi } from '../api/ssl'
 import { getApiError } from '../api/errors'
 import { useCooldown } from '../hooks/useCooldown'
-import { ChallengeType, CertType } from '../types/ssl'
+import { ChallengeType } from '../types/ssl'
 import type { CertStatus, IssuedCertificate } from '../types/ssl'
 import {
   ArrowLeft,
