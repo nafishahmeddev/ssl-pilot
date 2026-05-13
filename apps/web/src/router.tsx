@@ -67,6 +67,13 @@ export const router = createBrowserRouter([
           return { Component }
         },
       },
+      {
+        path: '/api-keys',
+        lazy: async () => {
+          const { default: Component } = await import('./pages/ApiKeys')
+          return { Component }
+        },
+      },
     ],
   },
 ])

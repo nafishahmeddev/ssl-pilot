@@ -4,11 +4,12 @@ import { useSelector } from '@tanstack/react-store'
 import { useQuery } from '@tanstack/react-query'
 import { authStore, setAccessToken } from '../../store/auth'
 import { logoutApi, getProfileApi } from '../../api/auth'
-import { Shield, LayoutDashboard, ShieldCheck, LogOut, Menu, Building } from 'lucide-react'
+import { Shield, LayoutDashboard, ShieldCheck, LogOut, Menu, Building, Key } from 'lucide-react'
 
 const NAV = [
-  { to: '/dashboard', label: 'Dashboard', icon: LayoutDashboard },
+  { to: '/dashboard',  label: 'Dashboard',    icon: LayoutDashboard },
   { to: '/certificates', label: 'Certificates', icon: ShieldCheck },
+  { to: '/api-keys',   label: 'API Keys',     icon: Key },
 ]
 
 export default function AppLayout() {
