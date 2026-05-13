@@ -33,10 +33,14 @@ export interface CertFiles {
   expiryDate?: string
 }
 
-interface ApiResponse<T> {
-  success: boolean
+interface SuccessResponse<T> {
   data: T
-  message: string
+  meta: { message?: string }
+}
+
+interface ErrorResponse {
+  errors: { message: string; code: string }[]
+  meta: { message?: string }
 }
 
 async function request<T>(path: string): Promise<T> {
@@ -44,13 +48,15 @@ async function request<T>(path: string): Promise<T> {
     headers: authHeaders(),
   })
 
-  const body = (await res.json()) as ApiResponse<T>
+  const body = (await res.json()) as SuccessResponse<T> | ErrorResponse
 
-  if (!res.ok || !body.success) {
-    throw new Error(body.message ?? `HTTP ${res.status}`)
+  if (!res.ok || 'errors' in body) {
+    const errBody = body as ErrorResponse
+    const msg = errBody.errors?.[0]?.message ?? `HTTP ${res.status}`
+    throw new Error(msg)
   }
 
-  return body.data
+  return (body as SuccessResponse<T>).data
 }
 
 export async function listCerts(): Promise<CertInfo[]> {
