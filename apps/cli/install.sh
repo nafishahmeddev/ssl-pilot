@@ -2,7 +2,7 @@
 set -euo pipefail
 
 REPO="nafishahmeddev/ssl-pilot"
-BIN_NAME="ssl-pilot"
+BIN_NAME="sp"
 INSTALL_DIR="/usr/local/bin"
 INSTALL_PATH="${INSTALL_DIR}/${BIN_NAME}"
 
@@ -87,9 +87,9 @@ echo "  1. Export your API key (add to ~/.bashrc or ~/.zshrc):"
 echo "     export SSL_PILOT_API_KEY='sslpilot_...'"
 echo ""
 echo "  2. List certificates:"
-echo "     ssl-pilot list"
+echo "     sp list"
 echo ""
 echo "  3. Download a certificate (requires root for /etc/ssl-pilot/):"
-echo "     sudo ssl-pilot download"
-echo "     sudo ssl-pilot download '*.example.com'"
+echo "     sudo sp download"
+echo "     sudo sp download '*.example.com'"
 echo ""

@@ -4,7 +4,7 @@ import { listCommand } from './commands/list.js'
 import { downloadCommand } from './commands/download.js'
 
 const program = new Command()
-  .name('ssl-pilot')
+  .name('sp')
   .description('SSL Pilot CLI — download and manage your SSL certificates')
   .version('1.0.0')
 

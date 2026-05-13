@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-BIN_PATH="/usr/local/bin/ssl-pilot"
+BIN_PATH="/usr/local/bin/sp"
 CERT_DIR="/etc/ssl-pilot"
 
 RED='\033[0;31m'

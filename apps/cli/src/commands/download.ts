@@ -18,7 +18,7 @@ async function performDownload(cert: CertInfo): Promise<void> {
 }
 
 export const downloadCommand = new Command('download')
-  .description('Download a certificate to /etc/ssl-pilot/<domain>/')
+  .description('Download a certificate to /etc/ssl-pilot/<domain>/ (requires sudo)')
   .argument('[certName]', 'Certificate name to download (e.g. *.example.com or api.example.com)')
   .option('-i, --id <id>', 'Download by certificate ID directly')
   .action(async (certName: string | undefined, opts: { id?: string }) => {
@@ -47,7 +47,7 @@ export const downloadCommand = new Command('download')
         const match = certs.find(c => c.certName === certName)
         if (!match) {
           console.error(`Error: No certificate found for "${certName}"`)
-          console.error(`Run "ssl-pilot list" to see available certificates.`)
+          console.error(`Run "sp list" to see available certificates.`)
           process.exit(1)
         }
         if (match.status !== 'active') {

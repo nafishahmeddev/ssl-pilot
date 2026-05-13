@@ -49,7 +49,7 @@ function handleFsError(err: unknown, certName: string, path: string): never {
     console.error(`Re-run with sudo:\n`)
 
     const name = certName.startsWith('*.') ? `'${certName}'` : certName
-    console.error(`  sudo ssl-pilot download ${name}\n`)
+    console.error(`  sudo sp download ${name}\n`)
     process.exit(1)
   }
 
