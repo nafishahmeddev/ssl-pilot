@@ -12,6 +12,7 @@
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
+    "@inquirer/input": "^4.0.0",
     "@inquirer/select": "^4.0.0",
     "commander": "^12.0.0"
   },

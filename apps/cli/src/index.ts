@@ -2,6 +2,7 @@
 import { Command } from 'commander'
 import { listCommand } from './commands/list.js'
 import { downloadCommand } from './commands/download.js'
+import { serviceCommand } from './commands/service/index.js'
 
 const program = new Command()
   .name('sp')
@@ -10,5 +11,6 @@ const program = new Command()
 
 program.addCommand(listCommand)
 program.addCommand(downloadCommand)
+program.addCommand(serviceCommand)
 
 program.parse()

@@ -1,11 +1,12 @@
 import { Command } from 'commander'
-import { listCerts } from '../api.js'
+import { getConfiguredClient } from '../client.js'
 
 export const listCommand = new Command('list')
   .description('List all certificates in your organisation')
   .action(async () => {
     try {
-      const certs = await listCerts()
+      const client = await getConfiguredClient()
+      const certs = await client.listCerts()
 
       if (certs.length === 0) {
         console.log('No certificates found.')

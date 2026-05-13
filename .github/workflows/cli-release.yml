@@ -24,7 +24,7 @@ jobs:
 
       - name: Install dependencies
         working-directory: apps/cli
-        run: bun install --frozen-lockfile
+        run: bun install
 
       - name: Build binaries (all platforms)
         working-directory: apps/cli

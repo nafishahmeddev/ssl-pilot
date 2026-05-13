@@ -1,12 +1,14 @@
 import { Command } from 'commander'
 import select from '@inquirer/select'
-import { listCerts, downloadCert, type CertInfo } from '../api.js'
+import { type CertInfo } from '../api.js'
+import { getConfiguredClient } from '../client.js'
 import { saveCert } from '../files.js'
 
 async function performDownload(cert: CertInfo): Promise<void> {
   console.log(`\nDownloading ${cert.certName}…`)
 
-  const files = await downloadCert(cert._id)
+  const client = await getConfiguredClient()
+  const files = await client.downloadCert(cert._id)
   const { certPath, keyPath } = await saveCert(files.certName, files.certPem, files.keyPem)
 
   console.log(`Certificate saved to: ${certPath}`)
@@ -23,9 +25,10 @@ export const downloadCommand = new Command('download')
   .option('-i, --id <id>', 'Download by certificate ID directly')
   .action(async (certName: string | undefined, opts: { id?: string }) => {
     try {
-      // Direct by ID
+      const client = await getConfiguredClient()
+
       if (opts.id) {
-        const certs = await listCerts()
+        const certs = await client.listCerts()
         const cert  = certs.find(c => c._id === opts.id)
         if (!cert) {
           console.error(`Error: No certificate found with ID ${opts.id}`)
@@ -35,14 +38,13 @@ export const downloadCommand = new Command('download')
         return
       }
 
-      const certs = await listCerts()
+      const certs = await client.listCerts()
 
       if (certs.length === 0) {
         console.log('No certificates found.')
         return
       }
 
-      // Direct by certName param
       if (certName) {
         const match = certs.find(c => c.certName === certName)
         if (!match) {
@@ -58,7 +60,6 @@ export const downloadCommand = new Command('download')
         return
       }
 
-      // Interactive mode — pick from list
       const active = certs.filter(c => c.status === 'active')
 
       if (active.length === 0) {
@@ -82,7 +83,6 @@ export const downloadCommand = new Command('download')
 
       await performDownload(chosen)
     } catch (err) {
-      // inquirer throws if user hits Ctrl+C
       if ((err as NodeJS.ErrnoException).name === 'ExitPromptError') {
         process.exit(0)
       }
