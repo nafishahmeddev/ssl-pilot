@@ -4,6 +4,7 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { getDomainApi, initiateSslApi, recheckSslApi, deleteDomainApi } from '../api/ssl'
 import { getApiError } from '../api/errors'
 import { useCooldown } from '../hooks/useCooldown'
+import { ChallengeType, DomainType } from '../types/ssl'
 import type { DomainDetail, DomainStatus, IssuedCertificate } from '../types/ssl'
 import {
   ArrowLeft,
@@ -156,6 +157,9 @@ export default function DomainDetail() {
               {domain.domainName}
             </h1>
             <StatusBadge status={domain.status} expiring={isExpiringSoon} />
+            <span className="badge badge-sm badge-ghost font-mono">
+              {domain.domainType === DomainType.WILDCARD ? 'wildcard' : 'single'}
+            </span>
           </div>
           <button
             onClick={() => {
@@ -293,13 +297,14 @@ export default function DomainDetail() {
         </div>
       )}
 
-      {/* ── DNS Challenge Card ── */}
+      {/* ── Challenge Card (dns-01 or http-01) ── */}
       {domain.status === 'pending_challenge' && (
         <div
           className="rounded-2xl"
           style={{ background: 'var(--c-card)', border: '1px solid oklch(72% 0.19 80 / 0.35)' }}
         >
           <div className="p-6">
+            {/* Header */}
             <div className="flex items-start gap-3 mb-5">
               <div
                 className="w-9 h-9 rounded-xl flex items-center justify-center shrink-0"
@@ -308,60 +313,134 @@ export default function DomainDetail() {
                 <AlertTriangle className="w-5 h-5" style={{ color: 'var(--c-warning)' }} />
               </div>
               <div>
-                <p className="font-semibold" style={{ color: 'var(--c-text-1)' }}>DNS Challenge Required</p>
-                <p className="text-xs mt-0.5" style={{ color: 'var(--c-text-2)' }}>
-                  Add this TXT record to your DNS provider to verify domain ownership.
+                <div className="flex items-center gap-2 mb-0.5">
+                  <p className="font-semibold" style={{ color: 'var(--c-text-1)' }}>
+                    {domain.challengeType === ChallengeType.HTTP_01
+                      ? 'HTTP Challenge Required'
+                      : 'DNS Challenge Required'}
+                  </p>
+                  {domain.challengeType && (
+                    <span className="badge badge-sm badge-ghost font-mono">{domain.challengeType}</span>
+                  )}
+                </div>
+                <p className="text-xs" style={{ color: 'var(--c-text-2)' }}>
+                  {domain.challengeType === ChallengeType.HTTP_01
+                    ? "Prove you control this domain by serving a file on your web server."
+                    : "Prove you control this domain by adding a TXT record to your DNS."}
                 </p>
               </div>
             </div>
 
-            <div
-              className="rounded-xl p-4 space-y-4 font-mono text-sm"
-              style={{ background: 'var(--c-surface)', border: '1px solid var(--c-border)' }}
-            >
-              <div className="flex items-center justify-between">
-                <span className="text-xs uppercase tracking-wider" style={{ color: 'var(--c-text-3)' }}>Type</span>
-                <span className="badge badge-neutral font-mono text-xs">TXT</span>
-              </div>
-              {[
-                {
-                  label: 'Name',
-                  value: domain.txtRecordName ?? `_acme-challenge.${domain.domainName}`,
-                  key: 'txt-name',
-                  color: 'var(--c-info)',
-                },
-                {
-                  label: 'Value',
-                  value: domain.txtRecordValue ?? '(not available)',
-                  key: 'txt-value',
-                  color: 'var(--c-purple)',
-                },
-              ].map(({ label, value, key, color }) => (
-                <div key={key} className="space-y-1.5">
-                  <span className="text-xs uppercase tracking-wider" style={{ color: 'var(--c-text-3)' }}>{label}</span>
-                  <div className="flex items-start gap-2">
-                    <span className="flex-1 break-all" style={{ color }}>{value}</span>
-                    <button
-                      onClick={() => handleCopy(value, key)}
-                      className="btn btn-ghost btn-xs btn-square shrink-0"
-                    >
-                      {copiedKey === key
-                        ? <Check className="w-3.5 h-3.5 text-success" />
-                        : <Copy className="w-3.5 h-3.5" style={{ color: 'var(--c-text-2)' }} />}
-                    </button>
+            {/* DNS-01: numbered guide + fields */}
+            {domain.challengeType !== ChallengeType.HTTP_01 && (
+              <>
+                <ol className="space-y-1.5 mb-4 text-xs" style={{ color: 'var(--c-text-2)' }}>
+                  <li className="flex gap-2">
+                    <span className="font-bold shrink-0" style={{ color: 'var(--c-primary)' }}>1.</span>
+                    Log in to your DNS provider (Cloudflare, Route 53, Namecheap, etc.)
+                  </li>
+                  <li className="flex gap-2">
+                    <span className="font-bold shrink-0" style={{ color: 'var(--c-primary)' }}>2.</span>
+                    Create a new <span className="font-mono font-semibold">TXT</span> record using the Name and Value below
+                  </li>
+                  <li className="flex gap-2">
+                    <span className="font-bold shrink-0" style={{ color: 'var(--c-primary)' }}>3.</span>
+                    Wait 1–5 minutes for DNS to propagate, then click Verify
+                  </li>
+                </ol>
+                <div
+                  className="rounded-xl p-4 space-y-4 font-mono text-sm"
+                  style={{ background: 'var(--c-surface)', border: '1px solid var(--c-border)' }}
+                >
+                  <div className="flex items-center justify-between">
+                    <span className="text-xs uppercase tracking-wider" style={{ color: 'var(--c-text-3)' }}>Record Type</span>
+                    <span className="badge badge-neutral font-mono text-xs">TXT</span>
                   </div>
+                  {[
+                    { label: 'Name',  value: domain.txtRecordName  ?? `_acme-challenge.${domain.domainName}`, key: 'txt-name',  color: 'var(--c-info)'   },
+                    { label: 'Value', value: domain.txtRecordValue ?? '(not available)',                       key: 'txt-value', color: 'var(--c-purple)' },
+                  ].map(({ label, value, key, color }) => (
+                    <div key={key} className="space-y-1.5">
+                      <span className="text-xs uppercase tracking-wider" style={{ color: 'var(--c-text-3)' }}>{label}</span>
+                      <div className="flex items-start gap-2">
+                        <span className="flex-1 break-all" style={{ color }}>{value}</span>
+                        <button onClick={() => handleCopy(value, key)} className="btn btn-ghost btn-xs btn-square shrink-0">
+                          {copiedKey === key
+                            ? <Check className="w-3.5 h-3.5 text-success" />
+                            : <Copy className="w-3.5 h-3.5" style={{ color: 'var(--c-text-2)' }} />}
+                        </button>
+                      </div>
+                    </div>
+                  ))}
                 </div>
-              ))}
-            </div>
+                <p className="text-xs mt-3" style={{ color: 'var(--c-text-3)' }}>
+                  Some DNS providers require you to enter only the subdomain part of the Name (e.g. <span className="font-mono">_acme-challenge</span> instead of the full FQDN). Check your provider's docs if the record is not being saved.
+                </p>
+              </>
+            )}
 
-            <p className="text-xs mt-3" style={{ color: 'var(--c-text-3)' }}>
-              DNS propagation can take a few minutes. Click verify once the record is live.
-            </p>
+            {/* HTTP-01: numbered guide + fields */}
+            {domain.challengeType === ChallengeType.HTTP_01 && (
+              <>
+                <ol className="space-y-1.5 mb-4 text-xs" style={{ color: 'var(--c-text-2)' }}>
+                  <li className="flex gap-2">
+                    <span className="font-bold shrink-0" style={{ color: 'var(--c-primary)' }}>1.</span>
+                    On your web server, create the directory <span className="font-mono">/.well-known/acme-challenge/</span> inside your document root
+                  </li>
+                  <li className="flex gap-2">
+                    <span className="font-bold shrink-0" style={{ color: 'var(--c-primary)' }}>2.</span>
+                    Create a file named exactly <span className="font-mono font-semibold">{domain.httpChallengeToken ?? '<token>'}</span> (no file extension) and paste the File Content below into it
+                  </li>
+                  <li className="flex gap-2">
+                    <span className="font-bold shrink-0" style={{ color: 'var(--c-primary)' }}>3.</span>
+                    Verify the file is reachable at the Challenge URL over plain HTTP (port 80) — not HTTPS
+                  </li>
+                  <li className="flex gap-2">
+                    <span className="font-bold shrink-0" style={{ color: 'var(--c-primary)' }}>4.</span>
+                    Click Verify — Let's Encrypt will fetch the file to confirm ownership
+                  </li>
+                </ol>
+                <div
+                  className="rounded-xl p-4 space-y-4 font-mono text-sm"
+                  style={{ background: 'var(--c-surface)', border: '1px solid var(--c-border)' }}
+                >
+                  {[
+                    {
+                      label: 'Challenge URL',
+                      value: `http://${domain.domainName}/.well-known/acme-challenge/${domain.httpChallengeToken ?? '(pending)'}`,
+                      key: 'http-url',
+                      color: 'var(--c-info)',
+                    },
+                    {
+                      label: 'File Content',
+                      value: domain.httpChallengeKeyAuth ?? '(not available)',
+                      key: 'http-content',
+                      color: 'var(--c-purple)',
+                    },
+                  ].map(({ label, value, key, color }) => (
+                    <div key={key} className="space-y-1.5">
+                      <span className="text-xs uppercase tracking-wider" style={{ color: 'var(--c-text-3)' }}>{label}</span>
+                      <div className="flex items-start gap-2">
+                        <span className="flex-1 break-all" style={{ color }}>{value}</span>
+                        <button onClick={() => handleCopy(value, key)} className="btn btn-ghost btn-xs btn-square shrink-0">
+                          {copiedKey === key
+                            ? <Check className="w-3.5 h-3.5 text-success" />
+                            : <Copy className="w-3.5 h-3.5" style={{ color: 'var(--c-text-2)' }} />}
+                        </button>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+                <p className="text-xs mt-3" style={{ color: 'var(--c-text-3)' }}>
+                  The file must be served as plain text with no extra content or newlines. Redirects from HTTP → HTTPS will cause verification to fail.
+                </p>
+              </>
+            )}
 
             {recheckMutation.isError && (
               <div className="alert alert-error mt-3 text-sm">
                 <AlertCircle className="w-4 h-4 shrink-0" />
-                <span>{getApiError(recheckMutation.error, 'Verification failed — DNS may not have propagated yet.')}</span>
+                <span>{getApiError(recheckMutation.error, 'Verification failed. Check that the challenge is correctly set up.')}</span>
               </div>
             )}
 
@@ -577,7 +656,7 @@ function StatusBadge({ status, expiring }: { status: DomainStatus; expiring?: bo
   const map: Record<DomainStatus, { label: string; cls: string }> = {
     active:            { label: 'Active',      cls: 'badge-success' },
     pending:           { label: 'Pending',     cls: 'badge-neutral' },
-    pending_challenge: { label: 'DNS Pending', cls: 'badge-warning' },
+    pending_challenge: { label: 'Challenge Pending', cls: 'badge-warning' },
     expired:           { label: 'Expired',     cls: 'badge-error'   },
     failed:            { label: 'Failed',      cls: 'badge-error'   },
   }

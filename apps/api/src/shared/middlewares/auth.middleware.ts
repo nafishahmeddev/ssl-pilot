@@ -15,10 +15,15 @@ export const authMiddleware = createMiddleware(async (c, next) => {
   try {
     const payload = await verify(token, env.JWT_ACCESS_SECRET, 'HS256')
 
-    c.set('userId', payload.sub as string)
-    c.set('organizationId', payload.organizationId as string)
-    c.set('userRole', payload.role as string)
-    c.set('userEmail', payload.email as string)
+    const { sub, organizationId, role, email } = payload
+    if (!sub || !organizationId || !role || !email) {
+      return ApiResponse.error(c, 'Malformed token payload', 'INVALID_TOKEN', 401)
+    }
+
+    c.set('userId', sub as string)
+    c.set('organizationId', organizationId as string)
+    c.set('userRole', role as string)
+    c.set('userEmail', email as string)
 
     await next()
   } catch {

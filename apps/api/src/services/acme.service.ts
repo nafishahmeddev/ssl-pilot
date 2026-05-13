@@ -1,10 +1,30 @@
 import { logger } from '@src/shared/utils/logger'
 import acme from 'acme-client'
-import type { DnsChallenge } from 'acme-client/types/rfc8555'
+import type { Challenge } from 'acme-client/types/rfc8555'
 import { X509Certificate } from 'crypto'
 import { env } from '@src/shared/config/env'
-import { DomainModel } from '@src/models/domain.model'
+import { DomainModel, ChallengeType, DomainType } from '@src/models/domain.model'
 import { OrganizationModel } from '@src/models/organization.model'
+
+// ── Result types ──────────────────────────────────────────────────────────────
+
+export type DnsChallengeResult = {
+  challengeType: typeof ChallengeType.DNS_01
+  txtName: string
+  txtValue: string
+}
+
+export type HttpChallengeResult = {
+  challengeType: typeof ChallengeType.HTTP_01
+  /** ACME challenge token — final URL path segment. */
+  token: string
+  /** Exact content to serve at the challenge URL. */
+  keyAuth: string
+}
+
+export type InitiateOrderResult = DnsChallengeResult | HttpChallengeResult
+
+// ── Service ───────────────────────────────────────────────────────────────────
 
 export class AcmeService {
   /**
@@ -63,14 +83,27 @@ export class AcmeService {
 
     this.clients.set(orgId, promise)
 
-    // On failure, evict from cache so the next call retries cleanly
+    // On failure, evict so the next call retries cleanly
     promise.catch(() => this.clients.delete(orgId))
 
     return promise
   }
 
-  async initiateOrder(domain: string, orgId: string, email: string) {
-    logger.info({ domain, orgId }, 'ACME: initiating order')
+  /**
+   * Creates a new ACME order and returns the challenge info the user must
+   * act on (DNS TXT record for dns-01, HTTP file for http-01).
+   *
+   * Stores all challenge fields on the domain document so `verifyAndIssue`
+   * can reconstruct and complete the challenge without extra inputs.
+   */
+  async initiateOrder(
+    domain: string,
+    orgId: string,
+    email: string,
+    challengeType: ChallengeType = ChallengeType.DNS_01,
+    domainType: DomainType = DomainType.SINGLE,
+  ): Promise<InitiateOrderResult> {
+    logger.info({ domain, orgId, challengeType }, 'ACME: initiating order')
 
     const client = await this.getClient(orgId, email)
 
@@ -79,60 +112,113 @@ export class AcmeService {
     })
 
     const authorizations = await client.getAuthorizations(order)
-    const challenge = authorizations[0].challenges.find((c) => c.type === 'dns-01')
+    if (!authorizations.length || !authorizations[0]?.challenges?.length) {
+      throw new Error(`ACME returned no authorizations or challenges for ${domain}`)
+    }
 
-    if (!challenge) throw new Error('DNS-01 challenge not found in ACME authorizations')
+    const challenge = authorizations[0].challenges.find((c) => c.type === challengeType)
+    if (!challenge) {
+      throw new Error(`${challengeType} challenge not available for ${domain}`)
+    }
 
     const keyAuth = await client.getChallengeKeyAuthorization(challenge)
-    const txtName = `_acme-challenge.${domain}`
+
+    const baseUpdate = {
+      status: 'pending_challenge' as const,
+      domainType,
+      challengeType,
+      acmeOrderUrl: order.url,
+      acmeChallengeUrl: challenge.url,
+    }
+
+    if (challengeType === ChallengeType.DNS_01) {
+      const txtName = `_acme-challenge.${domain}`
+
+      await DomainModel.findOneAndUpdate(
+        { domainName: domain, organizationId: orgId },
+        {
+          $set: {
+            ...baseUpdate,
+            txtRecordName:  txtName,
+            txtRecordValue: keyAuth,
+          },
+          $unset: {
+            httpChallengeToken:   1,
+            httpChallengeKeyAuth: 1,
+            renewalError:         1,
+            renewalFailedAt:      1,
+          },
+        },
+        { upsert: true, new: true },
+      )
+
+      logger.info({ domain, orgId }, 'ACME: dns-01 order initiated')
+      return { challengeType: ChallengeType.DNS_01, txtName, txtValue: keyAuth }
+    }
+
+    // HTTP-01
+    const token = challenge.token
 
     await DomainModel.findOneAndUpdate(
       { domainName: domain, organizationId: orgId },
       {
         $set: {
-          status: 'pending_challenge',
-          acmeOrderUrl: order.url,
-          acmeChallengeUrl: challenge.url,
-          txtRecordName: txtName,
-          txtRecordValue: keyAuth,
+          ...baseUpdate,
+          httpChallengeToken:   token,
+          httpChallengeKeyAuth: keyAuth,
         },
-        // Clear any stale auto-renewal error so the admin panel stops showing
-        // the manual-retry banner once a new order is successfully in-flight.
-        $unset: { renewalError: 1, renewalFailedAt: 1 },
+        $unset: {
+          txtRecordName:  1,
+          txtRecordValue: 1,
+          renewalError:   1,
+          renewalFailedAt: 1,
+        },
       },
-      { upsert: true, new: true }
+      { upsert: true, new: true },
     )
 
-    logger.info({ domain, orgId }, 'ACME: order initiated — waiting for DNS record')
-    return { txtName, txtValue: keyAuth }
+    logger.info({ domain, orgId }, 'ACME: http-01 order initiated')
+    return { challengeType: ChallengeType.HTTP_01, token, keyAuth }
   }
 
-  async verifyAndIssue(domain: string, orgId: string, email: string) {
-    logger.info({ domain, orgId }, 'ACME: verifying DNS challenge')
+  /**
+   * Completes the stored ACME challenge (dns-01 or http-01), finalises the
+   * order, and persists the issued certificate to the domain document.
+   */
+  async verifyAndIssue(domain: string, orgId: string, email: string): Promise<{ cert: string; key: string }> {
+    logger.info({ domain, orgId }, 'ACME: verifying challenge')
 
     const domainDoc = await DomainModel.findOne({ domainName: domain, organizationId: orgId })
     if (!domainDoc?.acmeOrderUrl) {
       throw new Error('No pending order found. Call initiateOrder first.')
     }
 
+    const resolvedChallengeType = domainDoc.challengeType ?? ChallengeType.DNS_01
     const client = await this.getClient(orgId, email)
 
-    // Reconstruct the order object from the stored URL
-    const order = await client.getOrder({ url: domainDoc.acmeOrderUrl } as Parameters<typeof client.getOrder>[0])
+    const order = await client.getOrder(
+      { url: domainDoc.acmeOrderUrl } as Parameters<typeof client.getOrder>[0],
+    )
 
     const authorizations = await client.getAuthorizations(order)
-    const foundChallenge = authorizations[0].challenges.find((c) => c.type === 'dns-01') as DnsChallenge | undefined
-    if (!foundChallenge) throw new Error('DNS-01 challenge not found in ACME authorizations')
+    if (!authorizations.length || !authorizations[0]?.challenges?.length) {
+      throw new Error(`ACME returned no authorizations or challenges for ${domain}`)
+    }
 
-    let challenge: DnsChallenge = foundChallenge
+    const found = authorizations[0].challenges.find((c) => c.type === resolvedChallengeType)
+    if (!found) {
+      throw new Error(`${resolvedChallengeType} challenge not found in authorizations`)
+    }
+
+    let challenge: Challenge = found
 
     if (challenge.status === 'pending') {
-      logger.info({ domain }, 'ACME: notifying Let\'s Encrypt to verify challenge')
-      challenge = (await client.completeChallenge(challenge)) as DnsChallenge
+      logger.info({ domain, resolvedChallengeType }, 'ACME: notifying Let\'s Encrypt to verify challenge')
+      challenge = (await client.completeChallenge(challenge)) as Challenge
     }
 
     logger.info({ domain }, 'ACME: polling for valid status…')
-    challenge = (await client.waitForValidStatus(challenge)) as DnsChallenge
+    challenge = (await client.waitForValidStatus(challenge)) as Challenge
 
     if (challenge.status !== 'valid') {
       throw new Error(`Challenge verification failed with status: ${challenge.status}`)
@@ -144,12 +230,11 @@ export class AcmeService {
     const cert = await client.getCertificate(finalizedOrder)
 
     const certStr = cert.toString()
-    const x509 = new X509Certificate(certStr)
-    const expiryDate = new Date(x509.validTo)
+    const expiryDate = new Date(new X509Certificate(certStr).validTo)
 
     await DomainModel.findOneAndUpdate(
       { domainName: domain, organizationId: orgId },
-      { status: 'active', expiryDate, certPem: certStr, keyPem: certKey.toString() }
+      { status: 'active', expiryDate, certPem: certStr, keyPem: certKey.toString() },
     )
 
     logger.info({ domain, orgId, expiryDate }, 'ACME: certificate issued')

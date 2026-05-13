@@ -1,10 +1,11 @@
-import { useState, useRef, useCallback } from 'react'
+import { useState, useCallback } from 'react'
 import { Link } from 'react-router-dom'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { getCertificatesApi, initiateSslApi, verifySslApi } from '../api/ssl'
 import { getApiError } from '../api/errors'
 import { useCooldown } from '../hooks/useCooldown'
-import type { DomainStatus, IssuedCertificate } from '../types/ssl'
+import { ChallengeType, DomainType } from '../types/ssl'
+import type { DomainStatus, IssuedCertificate, ChallengeInfo } from '../types/ssl'
 import {
   Globe,
   ShieldCheck,
@@ -17,9 +18,15 @@ import {
   Plus,
   X,
   ExternalLink,
+  FileText,
+  ArrowRight,
 } from 'lucide-react'
 
-interface ChallengeState { domain: string; txtName: string; txtValue: string }
+const FQDN_REGEX = /^(\*\.)?([a-zA-Z0-9]([a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?\.)+[a-zA-Z]{2,}$/
+
+// ── Local types ───────────────────────────────────────────────────────────────
+
+type ChallengeState = ChallengeInfo & { domain: string }
 interface CertState extends IssuedCertificate { domain: string }
 
 function isExpiringSoon(expiryDate?: string): boolean {
@@ -32,34 +39,29 @@ function isExpiringSoon(expiryDate?: string): boolean {
 export default function Certificates() {
   const qc = useQueryClient()
 
-  const [showForm, setShowForm] = useState(false)
-  const [formDomain, setFormDomain] = useState('')
-  const [challenge, setChallenge] = useState<ChallengeState | null>(null)
-  const [certificate, setCertificate] = useState<CertState | null>(null)
+  const [showForm, setShowForm]         = useState(false)
+  const [formDomain, setFormDomain]     = useState('')
+  const [formChallengeType, setFormChallengeType] = useState<typeof ChallengeType[keyof typeof ChallengeType]>(ChallengeType.DNS_01)
+  const [challenge, setChallenge]       = useState<ChallengeState | null>(null)
+  const [certificate, setCertificate]   = useState<CertState | null>(null)
+  const [modalCert, setModalCert]       = useState<CertState | null>(null)
+  const [copiedKey, setCopiedKey]       = useState<string | null>(null)
 
-  const [modalCert, setModalCert] = useState<CertState | null>(null)
-  const [copiedKey, setCopiedKey] = useState<string | null>(null)
-
-  // Per-domain cooldown tracking (60s verify, 45s initiate)
-  const cooldownsRef = useRef<Map<string, number>>(new Map())
-  const [, forceRender] = useState(0)
+  // Per-domain cooldown tracking (45s initiate, 60s verify)
+  const [cooldowns, setCooldowns] = useState<Map<string, number>>(new Map())
 
   const startDomainCooldown = useCallback((domain: string, ms: number) => {
-    cooldownsRef.current.set(domain, Date.now() + ms)
-    forceRender((n) => n + 1)
+    setCooldowns(prev => new Map(prev).set(domain, Date.now() + ms))
     setTimeout(() => {
-      cooldownsRef.current.delete(domain)
-      forceRender((n) => n + 1)
+      setCooldowns(prev => { const next = new Map(prev); next.delete(domain); return next })
     }, ms)
   }, [])
 
-  const isCooling = useCallback((domain: string) => (cooldownsRef.current.get(domain) ?? 0) > Date.now(), [])
-  // const secondsLeft   = useCallback((domain: string) => {
-  //   const endsAt = cooldownsRef.current.get(domain) ?? 0
-  //   return Math.max(0, Math.ceil((endsAt - Date.now()) / 1000))
-  // }, [])
+  const isCooling = useCallback(
+    (domain: string) => (cooldowns.get(domain) ?? 0) > Date.now(),
+    [cooldowns],
+  )
 
-  // Cooldown for the new-certificate flow (verify step uses global verify CD)
   const verifyCD = useCooldown(60_000)
 
   const { data, isLoading, isError } = useQuery({
@@ -69,10 +71,11 @@ export default function Certificates() {
   const certs = data?.data.certificates ?? []
 
   const initiateMutation = useMutation({
-    mutationFn: (d: string) => initiateSslApi(d),
-    onSettled: (_, __, domain) => startDomainCooldown(domain, 45_000),
-    onSuccess: (res, domain) => {
-      setChallenge({ domain, txtName: res.data.txtName, txtValue: res.data.txtValue })
+    mutationFn: ({ domain, challengeType }: { domain: string; challengeType: typeof ChallengeType[keyof typeof ChallengeType] }) =>
+      initiateSslApi(domain, challengeType),
+    onSettled: (_, __, vars) => startDomainCooldown(vars.domain, 45_000),
+    onSuccess: (res, vars) => {
+      setChallenge({ domain: vars.domain, ...res.data })
       setCertificate(null)
       setShowForm(false)
       qc.invalidateQueries({ queryKey: ['certificates'] })
@@ -80,7 +83,7 @@ export default function Certificates() {
   })
 
   const verifyMutation = useMutation({
-    mutationFn: (d: string) => verifySslApi(d),
+    mutationFn: (domain: string) => verifySslApi(domain),
     onSettled: () => verifyCD.start(),
     onSuccess: (res) => {
       setCertificate({ domain: challenge!.domain, ...res.data })
@@ -89,14 +92,10 @@ export default function Certificates() {
     },
   })
 
-
-
-
-
   const handleInitiate = (e: React.FormEvent) => {
     e.preventDefault()
     if (isCooling(formDomain)) return
-    initiateMutation.mutate(formDomain)
+    initiateMutation.mutate({ domain: formDomain, challengeType: formChallengeType })
   }
 
   const handleCopy = async (text: string, key: string) => {
@@ -104,17 +103,30 @@ export default function Certificates() {
     setCopiedKey(key)
     setTimeout(() => setCopiedKey(null), 2000)
   }
+
   const handleDownload = (content: string, filename: string) => {
     const url = URL.createObjectURL(new Blob([content], { type: 'text/plain' }))
     Object.assign(document.createElement('a'), { href: url, download: filename }).click()
     URL.revokeObjectURL(url)
   }
+
   const handleReset = () => {
-    setShowForm(false); setFormDomain(''); setChallenge(null); setCertificate(null)
-    initiateMutation.reset(); verifyMutation.reset()
+    setShowForm(false)
+    setFormDomain('')
+    setChallenge(null)
+    setCertificate(null)
+    initiateMutation.reset()
+    verifyMutation.reset()
   }
 
-  const activeFlow = showForm || !!challenge || !!certificate
+  const activeFlow    = showForm || !!challenge || !!certificate
+  const isWildcard    = formDomain.startsWith('*.')
+  const isDomainValid = formDomain.length > 0 && FQDN_REGEX.test(formDomain)
+
+  const handleDomainChange = (value: string) => {
+    setFormDomain(value)
+    if (value.startsWith('*.')) setFormChallengeType(ChallengeType.DNS_01)
+  }
 
   return (
     <main className="flex-1 p-5 lg:p-8 max-w-5xl w-full mx-auto space-y-5">
@@ -135,40 +147,158 @@ export default function Certificates() {
         )}
       </div>
 
-      {/* Issue Form */}
+      {/* Issue Form — guided 3-step onboarding */}
       {showForm && !challenge && !certificate && (
         <div className="rounded-2xl p-6 sm:p-8" style={{ background: 'var(--c-card)', border: '1px solid var(--c-border)' }}>
-          <h2 className="text-base font-bold mb-1" style={{ color: 'var(--c-text-1)' }}>Issue New Certificate</h2>
-          <p className="text-sm mb-5" style={{ color: 'var(--c-text-2)' }}>
-            Enter a domain to begin the DNS-01 ACME challenge
-          </p>
-          <form onSubmit={handleInitiate}>
-            <div className="flex flex-col sm:flex-row gap-3">
-              <label className="input input-bordered flex items-center gap-2.5 flex-1" htmlFor="domain-input">
+          <StepIndicator step={1} />
+
+          <div className="mt-6 mb-5">
+            <h2 className="text-base font-bold" style={{ color: 'var(--c-text-1)' }}>Issue New Certificate</h2>
+            <p className="text-sm mt-1" style={{ color: 'var(--c-text-2)' }}>
+              Enter your domain name, then choose how you'll prove you own it.
+            </p>
+          </div>
+
+          <form onSubmit={handleInitiate} className="space-y-5">
+
+            {/* Step 1a — Domain input */}
+            <div>
+              <label className="text-xs font-semibold uppercase tracking-wider mb-2 block" style={{ color: 'var(--c-text-3)' }}>
+                Domain Name
+              </label>
+              <label
+                className="input input-bordered flex items-center gap-2.5 w-full"
+                htmlFor="domain-input"
+                style={
+                  formDomain && !isDomainValid
+                    ? { borderColor: 'var(--c-error)' }
+                    : formDomain && isDomainValid
+                    ? { borderColor: 'var(--c-success)' }
+                    : {}
+                }
+              >
                 <Globe className="w-4 h-4 shrink-0" style={{ color: 'var(--c-text-3)' }} />
                 <input
                   id="domain-input"
                   type="text"
                   value={formDomain}
-                  onChange={(e) => setFormDomain(e.target.value)}
-                  className="grow bg-transparent outline-none"
-                  placeholder="example.com"
-                  required
+                  onChange={(e) => handleDomainChange(e.target.value)}
+                  className="grow bg-transparent outline-none font-mono"
+                  placeholder="example.com or *.example.com"
+                  autoFocus
                 />
+                {formDomain && (
+                  isDomainValid
+                    ? <Check className="w-4 h-4 shrink-0 text-success" />
+                    : <X className="w-4 h-4 shrink-0" style={{ color: 'var(--c-error)' }} />
+                )}
               </label>
-              <div className="flex gap-2">
-                <button type="button" onClick={handleReset} className="btn btn-ghost shrink-0">Cancel</button>
-                <button type="submit" disabled={initiateMutation.isPending} className="btn btn-primary shrink-0">
-                  {initiateMutation.isPending ? <span className="loading loading-spinner" /> : 'Initiate'}
-                </button>
-              </div>
+              {formDomain && !isDomainValid && (
+                <p className="text-xs mt-1.5" style={{ color: 'var(--c-error)' }}>
+                  Enter a valid domain — e.g. <span className="font-mono">example.com</span> or <span className="font-mono">*.example.com</span>
+                </p>
+              )}
+              {isWildcard && isDomainValid && (
+                <p className="text-xs mt-1.5" style={{ color: 'var(--c-text-3)' }}>
+                  Wildcard — this certificate will cover all direct subdomains (e.g. <span className="font-mono">app.example.com</span>, <span className="font-mono">api.example.com</span>).
+                </p>
+              )}
             </div>
+
+            {/* Step 1b — Method selection */}
+            <div>
+              <label className="text-xs font-semibold uppercase tracking-wider mb-3 block" style={{ color: 'var(--c-text-3)' }}>
+                Verification Method
+              </label>
+              <div className="grid sm:grid-cols-2 gap-3">
+
+                {/* DNS-01 */}
+                <button
+                  type="button"
+                  onClick={() => setFormChallengeType(ChallengeType.DNS_01)}
+                  className="text-left rounded-xl p-4 border-2 transition-all"
+                  style={
+                    formChallengeType === ChallengeType.DNS_01
+                      ? { borderColor: 'var(--c-primary)', background: 'var(--c-primary-soft)' }
+                      : { borderColor: 'var(--c-border)', background: 'var(--c-surface)' }
+                  }
+                >
+                  <div className="flex items-center gap-2 mb-2">
+                    <Globe className="w-4 h-4 shrink-0" style={{ color: formChallengeType === ChallengeType.DNS_01 ? 'var(--c-primary)' : 'var(--c-text-2)' }} />
+                    <span className="font-semibold text-sm" style={{ color: 'var(--c-text-1)' }}>DNS-01</span>
+                    <span className="badge badge-xs badge-success ml-auto">Recommended</span>
+                  </div>
+                  <p className="text-xs leading-relaxed" style={{ color: 'var(--c-text-2)' }}>
+                    Add a TXT record to your domain's DNS. Supports wildcards (*.example.com) and all domain types.
+                  </p>
+                  <p className="text-xs mt-2.5 font-medium" style={{ color: 'var(--c-text-3)' }}>
+                    Requires: DNS provider access
+                  </p>
+                </button>
+
+                {/* HTTP-01 */}
+                <button
+                  type="button"
+                  disabled={isWildcard}
+                  onClick={() => !isWildcard && setFormChallengeType(ChallengeType.HTTP_01)}
+                  className="text-left rounded-xl p-4 border-2 transition-all disabled:opacity-40 disabled:cursor-not-allowed"
+                  style={
+                    formChallengeType === ChallengeType.HTTP_01 && !isWildcard
+                      ? { borderColor: 'var(--c-primary)', background: 'var(--c-primary-soft)' }
+                      : { borderColor: 'var(--c-border)', background: 'var(--c-surface)' }
+                  }
+                >
+                  <div className="flex items-center gap-2 mb-2">
+                    <FileText className="w-4 h-4 shrink-0" style={{ color: formChallengeType === ChallengeType.HTTP_01 && !isWildcard ? 'var(--c-primary)' : 'var(--c-text-2)' }} />
+                    <span className="font-semibold text-sm" style={{ color: 'var(--c-text-1)' }}>HTTP-01</span>
+                    {isWildcard && <span className="badge badge-xs badge-error ml-auto">No wildcards</span>}
+                  </div>
+                  <p className="text-xs leading-relaxed" style={{ color: 'var(--c-text-2)' }}>
+                    Serve a small verification file on your web server. Straightforward if you have direct server access.
+                  </p>
+                  <p className="text-xs mt-2.5 font-medium" style={{ color: 'var(--c-text-3)' }}>
+                    Requires: port 80 open · no wildcards
+                  </p>
+                </button>
+
+              </div>
+              {isWildcard && (
+                <p className="text-xs mt-2" style={{ color: 'var(--c-warning)' }}>
+                  Wildcard certificates require DNS-01 — per RFC 8555, HTTP-01 cannot verify wildcards.
+                </p>
+              )}
+            </div>
+
+            {/* "What happens next" hint */}
+            <div className="rounded-xl px-4 py-3 flex items-start gap-2.5" style={{ background: 'var(--c-surface)', border: '1px solid var(--c-border)' }}>
+              <ArrowRight className="w-4 h-4 shrink-0 mt-0.5" style={{ color: 'var(--c-text-3)' }} />
+              <p className="text-xs" style={{ color: 'var(--c-text-2)' }}>
+                {formChallengeType === ChallengeType.DNS_01
+                  ? "Next: you'll receive a TXT record name and value to add in your DNS provider. Once added, come back to verify."
+                  : "Next: you'll receive a file path and content to publish on your server at port 80. Once live, come back to verify."}
+              </p>
+            </div>
+
             {initiateMutation.isError && (
-              <div className="alert alert-error mt-4 text-sm">
+              <div className="alert alert-error text-sm">
                 <AlertCircle className="w-4 h-4 shrink-0" />
                 <span>{getApiError(initiateMutation.error, 'Failed to initiate certificate.')}</span>
               </div>
             )}
+
+            <div className="flex gap-3 justify-end pt-1">
+              <button type="button" onClick={handleReset} className="btn btn-ghost">Cancel</button>
+              <button
+                type="submit"
+                disabled={!isDomainValid || initiateMutation.isPending || isCooling(formDomain)}
+                className="btn btn-primary gap-2"
+              >
+                {initiateMutation.isPending
+                  ? <><span className="loading loading-spinner loading-sm" /> Initiating…</>
+                  : <>Continue <ArrowRight className="w-4 h-4" /></>}
+              </button>
+            </div>
+
           </form>
         </div>
       )}
@@ -179,6 +309,8 @@ export default function Certificates() {
           challenge={challenge}
           copiedKey={copiedKey}
           verifyPending={verifyMutation.isPending}
+          verifyIsCooling={verifyCD.isCooling}
+          verifyCooldownLeft={verifyCD.secondsLeft}
           verifyError={verifyMutation.isError ? getApiError(verifyMutation.error, 'Verification failed. Check DNS propagation.') : null}
           onCopy={handleCopy}
           onVerify={() => verifyMutation.mutate(challenge.domain)}
@@ -188,7 +320,14 @@ export default function Certificates() {
 
       {/* Cert Result */}
       {certificate && (
-        <CertCard cert={certificate} copiedKey={copiedKey} onCopy={handleCopy} onDownload={handleDownload} onReset={handleReset} resetLabel="Issue another" />
+        <CertCard
+          cert={certificate}
+          copiedKey={copiedKey}
+          onCopy={handleCopy}
+          onDownload={handleDownload}
+          onReset={handleReset}
+          resetLabel="Issue another"
+        />
       )}
 
       {/* Table */}
@@ -219,46 +358,58 @@ export default function Certificates() {
               <thead>
                 <tr style={{ color: 'var(--c-text-3)', fontSize: '0.7rem' }}>
                   <th>Domain</th>
+                  <th>Type</th>
                   <th>Status</th>
+                  <th>Method</th>
                   <th>Issued</th>
                   <th>Expires</th>
                 </tr>
               </thead>
               <tbody>
                 {certs.map((cert) => (
-                  <>
-                    <tr key={cert._id} className="hover">
-                      <td>
-                        <Link
-                          to={`/certificates/${cert._id}`}
-                          className="flex items-center gap-1.5 font-mono text-sm hover:underline"
-                          style={{ color: 'var(--c-primary)' }}
-                        >
-                          {cert.domainName}
-                          <ExternalLink className="w-3 h-3 opacity-40 shrink-0" />
-                        </Link>
-                      </td>
-                      <td>
-                        <div className="flex items-center gap-1.5">
-                          <StatusBadge status={cert.status} expiring={isExpiringSoon(cert.expiryDate)} />
-                          {cert.renewalError && (
-                            <span title={`Auto-renewal failed: ${cert.renewalError}`}>
-                              <AlertCircle className="w-3.5 h-3.5" style={{ color: 'var(--c-error)' }} />
-                            </span>
-                          )}
-                        </div>
-                      </td>
-                      <td className="text-sm" style={{ color: 'var(--c-text-2)' }}>
-                        {new Date(cert.createdAt).toLocaleDateString()}
-                      </td>
-                      <td
-                        className="text-sm"
-                        style={{ color: isExpiringSoon(cert.expiryDate) ? 'var(--c-warning)' : 'var(--c-text-2)' }}
+                  <tr key={cert._id} className="hover">
+                    <td>
+                      <Link
+                        to={`/certificates/${cert._id}`}
+                        className="flex items-center gap-1.5 font-mono text-sm hover:underline"
+                        style={{ color: 'var(--c-primary)' }}
                       >
-                        {cert.expiryDate ? new Date(cert.expiryDate).toLocaleDateString() : '—'}
-                      </td>
-                    </tr>
-                  </>
+                        {cert.domainName}
+                        <ExternalLink className="w-3 h-3 opacity-40 shrink-0" />
+                      </Link>
+                    </td>
+                    <td>
+                      <DomainTypeBadge domainType={cert.domainType} />
+                    </td>
+                    <td>
+                      <div className="flex items-center gap-1.5">
+                        <StatusBadge status={cert.status} expiring={isExpiringSoon(cert.expiryDate)} />
+                        {cert.renewalError && (
+                          <span title={`Auto-renewal failed: ${cert.renewalError}`}>
+                            <AlertCircle className="w-3.5 h-3.5" style={{ color: 'var(--c-error)' }} />
+                          </span>
+                        )}
+                      </div>
+                    </td>
+                    <td>
+                      {cert.challengeType ? (
+                        <span className="badge badge-sm badge-ghost font-mono">
+                          {cert.challengeType}
+                        </span>
+                      ) : (
+                        <span style={{ color: 'var(--c-text-3)' }}>—</span>
+                      )}
+                    </td>
+                    <td className="text-sm" style={{ color: 'var(--c-text-2)' }}>
+                      {new Date(cert.createdAt).toLocaleDateString()}
+                    </td>
+                    <td
+                      className="text-sm"
+                      style={{ color: isExpiringSoon(cert.expiryDate) ? 'var(--c-warning)' : 'var(--c-text-2)' }}
+                    >
+                      {cert.expiryDate ? new Date(cert.expiryDate).toLocaleDateString() : '—'}
+                    </td>
+                  </tr>
                 ))}
               </tbody>
             </table>
@@ -266,10 +417,13 @@ export default function Certificates() {
         )}
       </div>
 
-      {/* Cert Modal */}
+      {/* Cert Modal (from recheck via detail page — not used here anymore, kept for future) */}
       {modalCert && (
         <div className="modal modal-open">
-          <div className="modal-box max-w-2xl" style={{ background: 'var(--c-card)', border: '1px solid var(--c-success)', borderColor: 'oklch(62% 0.18 158 / 0.3)' }}>
+          <div
+            className="modal-box max-w-2xl"
+            style={{ background: 'var(--c-card)', borderColor: 'oklch(62% 0.18 158 / 0.3)' }}
+          >
             <div className="flex items-start justify-between mb-4">
               <div className="flex items-center gap-3">
                 <div className="w-9 h-9 rounded-xl flex items-center justify-center" style={{ background: 'var(--c-success-soft)' }}>
@@ -287,7 +441,14 @@ export default function Certificates() {
             <p className="text-sm mb-5" style={{ color: 'var(--c-text-2)' }}>
               Save both files securely — the private key is shown only once.
             </p>
-            <CertFiles cert={modalCert.cert} privKey={modalCert.key} domain={modalCert.domain} copiedKey={copiedKey} onCopy={handleCopy} onDownload={handleDownload} />
+            <CertFiles
+              cert={modalCert.cert}
+              privKey={modalCert.key}
+              domain={modalCert.domain}
+              copiedKey={copiedKey}
+              onCopy={handleCopy}
+              onDownload={handleDownload}
+            />
             <div className="modal-action mt-2">
               <button onClick={() => setModalCert(null)} className="btn btn-primary btn-sm">Done</button>
             </div>
@@ -302,73 +463,222 @@ export default function Certificates() {
 
 // ── Sub-components ────────────────────────────────────────────────────────────
 
+function StepIndicator({ step }: { step: 1 | 2 | 3 }) {
+  const steps: { n: 1 | 2 | 3; label: string }[] = [
+    { n: 1, label: 'Enter Domain' },
+    { n: 2, label: 'Verify Ownership' },
+    { n: 3, label: 'Certificate Ready' },
+  ]
+  return (
+    <div className="flex items-center">
+      {steps.map(({ n, label }, i) => {
+        const done   = step > n
+        const active = step === n
+        const last   = i === steps.length - 1
+        return (
+          <div key={n} className="flex items-center">
+            <div className="flex items-center gap-2">
+              <div
+                className="w-6 h-6 rounded-full flex items-center justify-center text-xs font-bold shrink-0 transition-colors"
+                style={{
+                  background: done || active ? 'var(--c-primary)' : 'var(--c-surface-2)',
+                  color: done || active ? '#fff' : 'var(--c-text-3)',
+                }}
+              >
+                {done ? <Check className="w-3 h-3" /> : n}
+              </div>
+              <span
+                className="text-xs font-medium hidden sm:block"
+                style={{ color: active ? 'var(--c-text-1)' : done ? 'var(--c-text-2)' : 'var(--c-text-3)' }}
+              >
+                {label}
+              </span>
+            </div>
+            {!last && (
+              <div
+                className="h-px w-6 sm:w-10 mx-2 transition-colors"
+                style={{ background: step > n ? 'var(--c-primary)' : 'var(--c-border)' }}
+              />
+            )}
+          </div>
+        )
+      })}
+    </div>
+  )
+}
+
+function DomainTypeBadge({ domainType }: { domainType: DomainType }) {
+  return domainType === DomainType.WILDCARD
+    ? <span className="badge badge-sm badge-ghost font-mono">wildcard</span>
+    : <span className="badge badge-sm badge-ghost font-mono">single</span>
+}
+
 function StatusBadge({ status, expiring }: { status: DomainStatus; expiring?: boolean }) {
   if (status === 'active' && expiring) {
-    return <span className="badge badge-sm badge-warning gap-1"><AlertTriangle className="w-3 h-3" />Expiring</span>
+    return (
+      <span className="badge badge-sm badge-warning gap-1">
+        <AlertTriangle className="w-3 h-3" />
+        Expiring
+      </span>
+    )
   }
   const map: Record<DomainStatus, { label: string; cls: string }> = {
-    active: { label: 'Active', cls: 'badge-success' },
-    pending: { label: 'Pending', cls: 'badge-neutral' },
-    pending_challenge: { label: 'DNS Pending', cls: 'badge-warning' },
-    expired: { label: 'Expired', cls: 'badge-error' },
-    failed: { label: 'Failed', cls: 'badge-error' },
+    active:            { label: 'Active',           cls: 'badge-success' },
+    pending:           { label: 'Pending',          cls: 'badge-neutral' },
+    pending_challenge: { label: 'Challenge Pending', cls: 'badge-warning' },
+    expired:           { label: 'Expired',          cls: 'badge-error'   },
+    failed:            { label: 'Failed',           cls: 'badge-error'   },
   }
   const { label, cls } = map[status]
   return <span className={`badge badge-sm ${cls}`}>{label}</span>
 }
 
-
-
 function ChallengeCard({
-  challenge, copiedKey, verifyPending, verifyError, onCopy, onVerify, onReset,
+  challenge,
+  copiedKey,
+  verifyPending,
+  verifyIsCooling,
+  verifyCooldownLeft,
+  verifyError,
+  onCopy,
+  onVerify,
+  onReset,
 }: {
   challenge: ChallengeState
   copiedKey: string | null
   verifyPending: boolean
+  verifyIsCooling: boolean
+  verifyCooldownLeft: number
   verifyError: string | null
   onCopy: (text: string, key: string) => void
   onVerify: () => void
   onReset: () => void
 }) {
+  const isDns  = challenge.challengeType === ChallengeType.DNS_01
+  const isHttp = challenge.challengeType === ChallengeType.HTTP_01
+
   return (
     <div className="rounded-2xl p-6 sm:p-8" style={{ background: 'var(--c-card)', border: '1px solid oklch(72% 0.19 80 / 0.35)' }}>
-      <div className="flex items-start gap-3 mb-6">
+      <StepIndicator step={2} />
+      <div className="flex items-start gap-3 mt-6 mb-5">
         <div className="w-10 h-10 rounded-2xl flex items-center justify-center shrink-0" style={{ background: 'var(--c-warning-soft)' }}>
           <AlertTriangle className="w-5 h-5" style={{ color: 'var(--c-warning)' }} />
         </div>
         <div>
-          <h2 className="text-base font-bold" style={{ color: 'var(--c-text-1)' }}>Action Required: DNS Challenge</h2>
-          <p className="text-sm mt-1" style={{ color: 'var(--c-text-2)' }}>
-            Add this TXT record to verify ownership of{' '}
+          <div className="flex items-center gap-2 mb-0.5">
+            <h2 className="text-base font-bold" style={{ color: 'var(--c-text-1)' }}>
+              {isDns ? 'Action Required: DNS Challenge' : 'Action Required: HTTP Challenge'}
+            </h2>
+            <span className="badge badge-sm badge-ghost font-mono">{challenge.challengeType}</span>
+          </div>
+          <p className="text-sm" style={{ color: 'var(--c-text-2)' }}>
+            {isDns ? 'Prove you control ' : 'Prove you control '}
             <span className="font-semibold font-mono" style={{ color: 'var(--c-primary)' }}>{challenge.domain}</span>
+            {isDns ? ' by adding a TXT record to your DNS.' : ' by serving a file on your web server.'}
           </p>
         </div>
       </div>
 
-      <div className="rounded-xl p-5 space-y-5 font-mono text-sm" style={{ background: 'var(--c-surface)', border: '1px solid var(--c-border-mid)' }}>
-        <div className="flex items-center justify-between">
-          <span className="text-xs uppercase tracking-wider" style={{ color: 'var(--c-text-3)' }}>Type</span>
-          <span className="badge badge-neutral font-mono text-xs">TXT</span>
-        </div>
-        {[
-          { label: 'Name', value: challenge.txtName, key: 'ch-name', color: 'var(--c-info)' },
-          { label: 'Value', value: challenge.txtValue, key: 'ch-value', color: 'var(--c-purple)' },
-        ].map(({ label, value, key, color }) => (
-          <div key={key} className="space-y-1.5">
-            <span className="text-xs uppercase tracking-wider" style={{ color: 'var(--c-text-3)' }}>{label}</span>
-            <div className="flex items-center gap-2">
-              <span className="flex-1 break-all text-sm" style={{ color }}>{value}</span>
-              <button onClick={() => onCopy(value, key)} className="btn btn-ghost btn-xs btn-square shrink-0">
-                {copiedKey === key ? <Check className="w-3.5 h-3.5 text-success" /> : <Copy className="w-3.5 h-3.5" style={{ color: 'var(--c-text-3)' }} />}
-              </button>
+      {/* DNS-01: guide steps + fields */}
+      {isDns && (
+        <>
+          <ol className="space-y-1.5 mb-4 text-xs" style={{ color: 'var(--c-text-2)' }}>
+            <li className="flex gap-2">
+              <span className="font-bold shrink-0" style={{ color: 'var(--c-primary)' }}>1.</span>
+              Log in to your DNS provider (Cloudflare, Route 53, Namecheap, etc.)
+            </li>
+            <li className="flex gap-2">
+              <span className="font-bold shrink-0" style={{ color: 'var(--c-primary)' }}>2.</span>
+              Create a new <span className="font-mono font-semibold">TXT</span> record with the Name and Value below
+            </li>
+            <li className="flex gap-2">
+              <span className="font-bold shrink-0" style={{ color: 'var(--c-primary)' }}>3.</span>
+              Wait 1–5 minutes for DNS to propagate, then click Verify &amp; Issue
+            </li>
+          </ol>
+          <div className="rounded-xl p-5 space-y-5 font-mono text-sm" style={{ background: 'var(--c-surface)', border: '1px solid var(--c-border-mid)' }}>
+            <div className="flex items-center justify-between">
+              <span className="text-xs uppercase tracking-wider" style={{ color: 'var(--c-text-3)' }}>Record Type</span>
+              <span className="badge badge-neutral font-mono text-xs">TXT</span>
+            </div>
+            {[
+              { label: 'Name',  value: challenge.txtName,  key: 'ch-dns-name',  color: 'var(--c-info)'   },
+              { label: 'Value', value: challenge.txtValue, key: 'ch-dns-value', color: 'var(--c-purple)' },
+            ].map(({ label, value, key, color }) => (
+              <div key={key} className="space-y-1.5">
+                <span className="text-xs uppercase tracking-wider" style={{ color: 'var(--c-text-3)' }}>{label}</span>
+                <div className="flex items-center gap-2">
+                  <span className="flex-1 break-all text-sm" style={{ color }}>{value}</span>
+                  <button onClick={() => onCopy(value, key)} className="btn btn-ghost btn-xs btn-square shrink-0">
+                    {copiedKey === key
+                      ? <Check className="w-3.5 h-3.5 text-success" />
+                      : <Copy className="w-3.5 h-3.5" style={{ color: 'var(--c-text-3)' }} />}
+                  </button>
+                </div>
+              </div>
+            ))}
+          </div>
+          <p className="text-xs mt-3" style={{ color: 'var(--c-text-3)' }}>
+            Some providers require only the subdomain part for the Name (e.g. <span className="font-mono">_acme-challenge</span> instead of the full FQDN). Check your provider's docs if the record won't save.
+          </p>
+        </>
+      )}
+
+      {/* HTTP-01: guide steps + fields */}
+      {isHttp && (
+        <>
+          <ol className="space-y-1.5 mb-4 text-xs" style={{ color: 'var(--c-text-2)' }}>
+            <li className="flex gap-2">
+              <span className="font-bold shrink-0" style={{ color: 'var(--c-primary)' }}>1.</span>
+              On your server, create the directory <span className="font-mono">/.well-known/acme-challenge/</span> inside your document root
+            </li>
+            <li className="flex gap-2">
+              <span className="font-bold shrink-0" style={{ color: 'var(--c-primary)' }}>2.</span>
+              Create a file named exactly <span className="font-mono font-semibold">{challenge.token}</span> (no extension) and paste the File Content below into it
+            </li>
+            <li className="flex gap-2">
+              <span className="font-bold shrink-0" style={{ color: 'var(--c-primary)' }}>3.</span>
+              Confirm the file loads at the Challenge URL over plain HTTP (port 80, not HTTPS)
+            </li>
+            <li className="flex gap-2">
+              <span className="font-bold shrink-0" style={{ color: 'var(--c-primary)' }}>4.</span>
+              Click Verify &amp; Issue — Let's Encrypt will fetch the file to confirm ownership
+            </li>
+          </ol>
+          <div className="rounded-xl p-5 space-y-5 font-mono text-sm" style={{ background: 'var(--c-surface)', border: '1px solid var(--c-border-mid)' }}>
+            <div className="space-y-1.5">
+              <span className="text-xs uppercase tracking-wider" style={{ color: 'var(--c-text-3)' }}>Challenge URL</span>
+              <div className="flex items-center gap-2">
+                <span className="flex-1 break-all text-sm" style={{ color: 'var(--c-info)' }}>
+                  {`http://${challenge.domain}/.well-known/acme-challenge/${challenge.token}`}
+                </span>
+                <button
+                  onClick={() => onCopy(`http://${challenge.domain}/.well-known/acme-challenge/${challenge.token}`, 'ch-http-url')}
+                  className="btn btn-ghost btn-xs btn-square shrink-0"
+                >
+                  {copiedKey === 'ch-http-url'
+                    ? <Check className="w-3.5 h-3.5 text-success" />
+                    : <Copy className="w-3.5 h-3.5" style={{ color: 'var(--c-text-3)' }} />}
+                </button>
+              </div>
+            </div>
+            <div className="space-y-1.5">
+              <span className="text-xs uppercase tracking-wider" style={{ color: 'var(--c-text-3)' }}>File Content</span>
+              <div className="flex items-center gap-2">
+                <span className="flex-1 break-all text-sm" style={{ color: 'var(--c-purple)' }}>{challenge.keyAuth}</span>
+                <button onClick={() => onCopy(challenge.keyAuth, 'ch-http-content')} className="btn btn-ghost btn-xs btn-square shrink-0">
+                  {copiedKey === 'ch-http-content'
+                    ? <Check className="w-3.5 h-3.5 text-success" />
+                    : <Copy className="w-3.5 h-3.5" style={{ color: 'var(--c-text-3)' }} />}
+                </button>
+              </div>
             </div>
           </div>
-        ))}
-      </div>
-
-      <p className="text-xs mt-4" style={{ color: 'var(--c-text-3)' }}>
-        DNS propagation may take a few minutes after adding the record.
-      </p>
+          <p className="text-xs mt-3" style={{ color: 'var(--c-text-3)' }}>
+            The file must be served as plain text with no extra whitespace or newlines. HTTP → HTTPS redirects will cause verification to fail.
+          </p>
+        </>
+      )}
 
       {verifyError && (
         <div className="alert alert-error mt-4 text-sm">
@@ -382,9 +692,15 @@ function ChallengeCard({
           <RotateCcw className="w-4 h-4" />
           Start over
         </button>
-        <button className="btn btn-primary gap-2" disabled={verifyPending} onClick={onVerify}>
+        <button
+          className="btn btn-primary gap-2"
+          disabled={verifyPending || verifyIsCooling}
+          onClick={onVerify}
+        >
           {verifyPending
             ? <><span className="loading loading-spinner loading-sm" /> Verifying…</>
+            : verifyIsCooling
+            ? <><ShieldCheck className="w-4 h-4" /> Wait {verifyCooldownLeft}s</>
             : <><ShieldCheck className="w-4 h-4" /> Verify &amp; Issue</>}
         </button>
       </div>
@@ -404,7 +720,8 @@ function CertCard({
 }) {
   return (
     <div className="rounded-2xl p-6 sm:p-8" style={{ background: 'var(--c-card)', border: '1px solid oklch(62% 0.18 158 / 0.35)' }}>
-      <div className="flex items-start gap-3 mb-6">
+      <StepIndicator step={3} />
+      <div className="flex items-start gap-3 mt-6 mb-6">
         <div className="w-10 h-10 rounded-2xl flex items-center justify-center shrink-0" style={{ background: 'var(--c-success-soft)' }}>
           <ShieldCheck className="w-5 h-5" style={{ color: 'var(--c-success)' }} />
         </div>
@@ -440,8 +757,8 @@ function CertFiles({
   return (
     <>
       {[
-        { label: 'Certificate', value: cert, copyKey: 'cert', filename: `${domain}.crt`, color: 'var(--c-info)' },
-        { label: 'Private Key', value: privKey, copyKey: 'key', filename: `${domain}.key`, color: 'var(--c-purple)' },
+        { label: 'Certificate', value: cert,    copyKey: 'cert', filename: `${domain}.crt`, color: 'var(--c-info)'   },
+        { label: 'Private Key', value: privKey, copyKey: 'key',  filename: `${domain}.key`, color: 'var(--c-purple)' },
       ].map(({ label, value, copyKey, filename, color }) => (
         <div key={copyKey} className="mb-4">
           <div className="flex items-center justify-between mb-2">

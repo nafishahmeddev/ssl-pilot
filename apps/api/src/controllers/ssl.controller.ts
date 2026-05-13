@@ -2,31 +2,64 @@ import { createFactory } from 'hono/factory'
 import { zValidator } from '@hono/zod-validator'
 import { z } from 'zod'
 import { acmeService } from '@src/services/acme.service'
-import { DomainModel } from '@src/models/domain.model'
+import { DomainModel, ChallengeType, DomainType } from '@src/models/domain.model'
 import { ApiResponse } from '@src/shared/utils/response'
 import type { Env } from '@src/app'
 
 const factory = createFactory<Env>()
 
-const domainSchema = z.object({
-  domain: z.string().min(3).max(255),
+/**
+ * Validates a fully-qualified domain name with optional wildcard prefix.
+ * Accepts: example.com, sub.example.com, *.example.com
+ * Rejects: *.*.example.com, -example.com, example (no TLD)
+ */
+const FQDN_REGEX = /^(\*\.)?([a-zA-Z0-9]([a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?\.)+[a-zA-Z]{2,}$/
+
+const fqdnField = z
+  .string()
+  .min(3)
+  .max(255)
+  .refine((d) => FQDN_REGEX.test(d), {
+    message: 'Invalid domain format. Use example.com, sub.example.com, or *.example.com for wildcards.',
+  })
+
+const domainSchema = z.object({ domain: fqdnField })
+
+const initiateSchema = z.object({
+  domain:        fqdnField,
+  challengeType: z.enum([ChallengeType.DNS_01, ChallengeType.HTTP_01]).default(ChallengeType.DNS_01),
 })
 
 /**
  * POST /api/ssl/initiate
- * Creates a new ACME order for the given domain. Returns DNS TXT challenge info.
+ * Creates a new ACME order. Returns dns-01 TXT record info or http-01 file
+ * challenge info depending on the requested challengeType (default: dns-01).
  * Also clears any stale renewalError from a previously failed auto-renewal.
  */
 export const initiateSslHandler = factory.createHandlers(
-  zValidator('json', domainSchema),
+  zValidator('json', initiateSchema),
   async (c) => {
-    const { domain } = c.req.valid('json')
+    const { domain, challengeType } = c.req.valid('json')
     const orgId = c.get('organizationId')
     const email = c.get('userEmail')
 
+    const domainType = domain.startsWith('*.') ? DomainType.WILDCARD : DomainType.SINGLE
+
+    if (domainType === DomainType.WILDCARD && challengeType === ChallengeType.HTTP_01) {
+      return ApiResponse.error(
+        c,
+        'Wildcard certificates require DNS-01 — HTTP-01 is forbidden by RFC 8555.',
+        'WILDCARD_HTTP_FORBIDDEN',
+        400,
+      )
+    }
+
     try {
-      const challengeInfo = await acmeService.initiateOrder(domain, orgId, email)
-      return ApiResponse.success(c, challengeInfo, 'Order initiated. Add the TXT record to your DNS.')
+      const challengeInfo = await acmeService.initiateOrder(domain, orgId, email, challengeType, domainType)
+      const msg = challengeType === ChallengeType.HTTP_01
+        ? 'Order initiated. Serve the challenge file at the provided URL.'
+        : 'Order initiated. Add the TXT record to your DNS.'
+      return ApiResponse.success(c, challengeInfo, msg)
     } catch (error: unknown) {
       const err = error as NodeJS.ErrnoException & { code?: number }
       if (err.code === 11000) {
@@ -102,7 +135,7 @@ export const listCertificatesHandler = factory.createHandlers(async (c) => {
 
   try {
     const domains = await DomainModel.find({ organizationId: orgId })
-      .select('domainName status txtRecordName txtRecordValue renewalError lastChecked expiryDate createdAt updatedAt')
+      .select('domainName status domainType challengeType txtRecordName txtRecordValue httpChallengeToken httpChallengeKeyAuth renewalError lastChecked expiryDate createdAt updatedAt')
       .sort({ createdAt: -1 })
       .lean()
 
