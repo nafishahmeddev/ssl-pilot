@@ -47,6 +47,13 @@ export const router = createBrowserRouter([
         },
       },
       {
+        path: '/certificates/new',
+        lazy: async () => {
+          const { default: Component } = await import('./pages/NewCertificate')
+          return { Component }
+        },
+      },
+      {
         path: '/certs/:id',
         lazy: async () => {
           const { default: Component } = await import('./pages/CertDetail')
