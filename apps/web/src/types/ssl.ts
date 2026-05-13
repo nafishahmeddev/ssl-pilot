@@ -38,6 +38,8 @@ export interface DomainDetail {
   txtRecordValue?: string
   /** PEM-encoded certificate from last successful issuance. */
   certPem?: string
+  /** PEM-encoded private key from last successful issuance. */
+  keyPem?: string
   /** Error from last failed auto-renewal (cron). Cleared on successful manual initiate. */
   renewalError?: string
   renewalFailedAt?: string

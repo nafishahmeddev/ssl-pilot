@@ -149,7 +149,7 @@ export class AcmeService {
 
     await DomainModel.findOneAndUpdate(
       { domainName: domain, organizationId: orgId },
-      { status: 'active', expiryDate, certPem: certStr }
+      { status: 'active', expiryDate, certPem: certStr, keyPem: certKey.toString() }
     )
 
     logger.info({ domain, orgId, expiryDate }, 'ACME: certificate issued')

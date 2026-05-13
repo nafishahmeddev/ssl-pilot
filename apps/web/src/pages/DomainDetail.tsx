@@ -13,6 +13,7 @@ import {
   Copy,
   Check,
   Download,
+  Key,
   RotateCcw,
   RefreshCw,
   Clock,
@@ -393,6 +394,7 @@ export default function DomainDetail() {
 
       {/* ── Stored Certificate (active) ── */}
       {domain.status === 'active' && domain.certPem && (
+        <>
         <div
           className="rounded-2xl"
           style={{ background: 'var(--c-card)', border: '1px solid var(--c-primary-mid)' }}
@@ -445,6 +447,68 @@ export default function DomainDetail() {
             </div>
           </div>
         </div>
+
+        <div
+          className="rounded-2xl mt-4"
+          style={{ background: 'var(--c-card)', border: '1px solid var(--c-border)' }}
+        >
+          <div className="p-6">
+            <div className="flex items-center justify-between mb-4">
+              <div className="flex items-center gap-3">
+                <div
+                  className="w-9 h-9 rounded-xl flex items-center justify-center"
+                  style={{ background: 'var(--c-success-soft)' }}
+                >
+                  <Key className="w-5 h-5" style={{ color: 'var(--c-success)' }} />
+                </div>
+                <div>
+                  <p className="font-semibold" style={{ color: 'var(--c-text-1)' }}>Private Key</p>
+                  <p className="text-xs" style={{ color: 'var(--c-text-2)' }}>Private key (PEM)</p>
+                </div>
+              </div>
+              <div className="flex gap-1">
+                <button
+                  onClick={() => domain.keyPem && handleCopy(domain.keyPem, 'key-pem')}
+                  className="btn btn-ghost btn-xs gap-1.5"
+                  disabled={!domain.keyPem}
+                >
+                  {copiedKey === 'key-pem'
+                    ? <Check className="w-3.5 h-3.5 text-success" />
+                    : <Copy className="w-3.5 h-3.5" />}
+                  {copiedKey === 'key-pem' ? 'Copied' : 'Copy'}
+                </button>
+                <button
+                  onClick={() => domain.keyPem && handleDownload(domain.keyPem, `${domain.domainName}.key`)}
+                  className="btn btn-ghost btn-xs gap-1.5"
+                  disabled={!domain.keyPem}
+                >
+                  <Download className="w-3.5 h-3.5" />
+                  Download
+                </button>
+              </div>
+            </div>
+            <div
+              className="rounded-xl p-4 font-mono text-xs overflow-x-auto"
+              style={{
+                background: 'var(--c-code-bg)',
+                border: '1px solid var(--c-border)',
+                color: 'var(--c-info)',
+              }}
+            >
+              <pre className="whitespace-pre-wrap break-all">
+                {domain.keyPem ? (
+                  <>
+                    {domain.keyPem.trim().split('\n').slice(0, 6).join('\n')}
+                    {domain.keyPem.trim().split('\n').length > 6 && '\n…'}
+                  </>
+                ) : (
+                  'Private key not available for existing certificates (only shown once during issuance)'
+                )}
+              </pre>
+            </div>
+          </div>
+        </div>
+        </>
       )}
 
       {/* ── Actions (failed / expired without renewalError) ── */}

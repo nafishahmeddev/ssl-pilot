@@ -24,6 +24,8 @@ export interface IDomain extends Document {
   txtRecordValue?: string
   /** PEM-encoded certificate from the last successful issuance. */
   certPem?: string
+  /** PEM-encoded private key from the last successful issuance. */
+  keyPem?: string
   /** Error message from the last failed auto-renewal attempt (cron). */
   renewalError?: string
   /** Timestamp of the last failed auto-renewal attempt. */
@@ -48,6 +50,7 @@ const domainSchema = new Schema<IDomain>(
     txtRecordName: { type: String },
     txtRecordValue: { type: String },
     certPem: { type: String },
+    keyPem: { type: String },
     renewalError: { type: String },
     renewalFailedAt: { type: Date },
     lastChecked: { type: Date },
