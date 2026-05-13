@@ -6,7 +6,8 @@
       "Bash(node -e \"const m = require\\('mongoose'\\); console.log\\(typeof m.FilterQuery, Object.keys\\(m\\).filter\\(k=>k.includes\\('Filter'\\)\\)\\)\")",
       "Bash(npx eslint *)",
       "Bash(python3 -c \"import sys,json; d=json.load\\(sys.stdin\\); print\\(list\\(d.get\\('devDependencies',{}\\).keys\\(\\)\\)\\)\")",
-      "Bash(npm run *)"
+      "Bash(npm run *)",
+      "Bash(grep -n \"txtRecordName\\\\|_acme-challenge\\\\.\\\\$\" /Users/ahmed/Documents/Projects/ssl-pilot/apps/web/src/pages/Certificates.tsx)"
     ],
     "additionalDirectories": [
       "/Users/ahmed/Documents/Projects-pilot/apps/api/src/jobs"

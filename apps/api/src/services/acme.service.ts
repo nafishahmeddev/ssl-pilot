@@ -132,7 +132,9 @@ export class AcmeService {
     }
 
     if (challengeType === ChallengeType.DNS_01) {
-      const txtName = `_acme-challenge.${domain}`
+      // RFC 8555 §8.4: wildcard orders use the base domain without the '*.' prefix
+      const baseDomain = domain.startsWith('*.') ? domain.slice(2) : domain
+      const txtName = `_acme-challenge.${baseDomain}`
 
       await DomainModel.updateOne(
         { domainName: domain, organizationId: orgId },

@@ -367,7 +367,7 @@ export default function DomainDetail() {
                     <span className="badge badge-neutral font-mono text-xs">TXT</span>
                   </div>
                   {[
-                    { label: 'Name',  value: domain.txtRecordName  ?? `_acme-challenge.${domain.domainName}`, key: 'txt-name',  color: 'var(--c-info)'   },
+                    { label: 'Name',  value: domain.txtRecordName  ?? `_acme-challenge.${domain.domainName.startsWith('*.') ? domain.domainName.slice(2) : domain.domainName}`, key: 'txt-name',  color: 'var(--c-info)'   },
                     { label: 'Value', value: domain.txtRecordValue ?? '(not available)',                       key: 'txt-value', color: 'var(--c-purple)' },
                   ].map(({ label, value, key, color }) => (
                     <div key={key} className="space-y-1.5">
