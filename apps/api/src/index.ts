@@ -23,11 +23,11 @@ async function startServer() {
   })
 }
 
-startServer()
+startServer().catch((err) => {
+  logger.fatal(err, 'Fatal: server failed to start')
+  process.exit(1)
+})
 
-/**
- * Handles graceful shutdown by closing the server.
- */
 const shutdown = () => {
   logger.info('Shutting down gracefully...')
   stopVerificationJob()
@@ -43,6 +43,14 @@ const shutdown = () => {
   })
 }
 
-// Handle standard termination signals
 process.on('SIGTERM', shutdown)
 process.on('SIGINT', shutdown)
+
+// Catch-all for unhandled async errors — last resort before Node crashes the process
+process.on('unhandledRejection', (reason) => {
+  logger.error({ reason }, 'Unhandled promise rejection')
+})
+process.on('uncaughtException', (err) => {
+  logger.fatal(err, 'Uncaught exception — shutting down')
+  process.exit(1)
+})

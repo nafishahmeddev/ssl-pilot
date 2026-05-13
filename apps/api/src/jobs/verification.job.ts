@@ -12,6 +12,10 @@ let job: Cron | null = null
  * Runs every 10 minutes to check for pending challenges.
  */
 export function startVerificationJob(): void {
+  if (job) {
+    logger.warn('startVerificationJob called more than once — ignoring')
+    return
+  }
   job = new Cron(
     '*/10 * * * *',
     {
@@ -60,6 +64,8 @@ async function checkAndVerifyPending(): Promise<void> {
       { lastChecked: { $lt: ttlEdge } },
     ],
   })
+    .select('domainName organizationId')
+    .lean()
   
   if (pending.length === 0) {
     logger.info('Verification job: no pending challenges to verify')

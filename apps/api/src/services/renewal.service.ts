@@ -15,7 +15,7 @@
  */
 
 import { Types } from 'mongoose'
-import { DomainModel } from '@src/models/domain.model'
+import { DomainModel, ChallengeType } from '@src/models/domain.model'
 import { UserModel } from '@src/models/user.model'
 import { acmeService } from '@src/services/acme.service'
 import { logger } from '@src/shared/utils/logger'
@@ -69,7 +69,7 @@ async function markExpiredCertificates(): Promise<number> {
  */
 async function initiateRenewalOrders(): Promise<RenewalResult> {
   const expired = await DomainModel.find({ status: 'expired' })
-    .select('domainName organizationId')
+    .select('domainName organizationId domainType challengeType')
     .lean()
 
   const result: RenewalResult = { attempted: expired.length, succeeded: 0, failed: 0 }
@@ -121,7 +121,9 @@ async function initiateRenewalOrders(): Promise<RenewalResult> {
       await acmeService.initiateOrder(
         domain.domainName,
         domain.organizationId.toString(),
-        admin.email
+        admin.email,
+        domain.challengeType ?? ChallengeType.DNS_01,
+        domain.domainType,
       )
 
       log.info({ adminEmail: admin.email }, 'Renewal: ACME order initiated — DNS update required in admin panel')

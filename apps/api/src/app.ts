@@ -23,12 +23,21 @@ export type Env = {
 
 const app = new Hono<Env>()
 
+// Strip trailing slash for origin comparison (Zod url() can include it)
+const normalizeOrigin = (o: string) => o.replace(/\/$/, '')
+const allowedOrigin   = normalizeOrigin(env.FRONTEND_URL)
+
 // CORS — must be first so preflight OPTIONS requests get headers before auth checks
 app.use('*', cors({
-  origin: (origin) => (origin === env.FRONTEND_URL ? origin : null),
-  allowMethods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
+  origin: (origin) => {
+    if (!origin) return null // non-browser request (no Origin header) — CORS not applicable
+    return normalizeOrigin(origin) === allowedOrigin ? origin : null
+  },
+  allowMethods: ['GET', 'POST', 'PUT', 'DELETE'],
   allowHeaders: ['Content-Type', 'Authorization'],
+  exposeHeaders: [],
   credentials: true,
+  maxAge: 3600, // cache preflight 1 h — avoids OPTIONS flood on every request
 }))
 
 // Use custom request/response logger

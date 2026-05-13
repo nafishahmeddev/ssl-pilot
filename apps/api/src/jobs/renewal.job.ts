@@ -26,6 +26,10 @@ let job: Cron | null = null
  * the previous `job` reference would be replaced without stopping the old one.
  */
 export function startRenewalJob(): void {
+  if (job) {
+    logger.warn('startRenewalJob called more than once — ignoring')
+    return
+  }
   job = new Cron(
     '0 3 * * *',
     {
