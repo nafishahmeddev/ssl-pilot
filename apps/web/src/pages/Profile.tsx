@@ -53,10 +53,10 @@ export default function Profile() {
   }
 
   return (
-    <div className="flex-1 p-6 space-y-6 max-w-4xl">
-      <div>
+    <div className="flex-1 p-5 lg:p-8 space-y-5 max-w-4xl w-full mx-auto">
+      <div className="pt-1">
         <h1 className="text-2xl font-bold" style={{ color: 'var(--c-text-1)' }}>Account Settings</h1>
-        <p className="text-sm mt-1" style={{ color: 'var(--c-text-3)' }}>Manage your profile and security</p>
+        <p className="text-sm mt-1" style={{ color: 'var(--c-text-2)' }}>Manage your profile and security</p>
       </div>
 
       {/* ── Profile Info ── */}
@@ -170,7 +170,13 @@ export default function Profile() {
 
             <form.Field
               name="confirmPassword"
-              validators={{ onChange: z.string().min(1, 'Please confirm your password') }}
+              validators={{
+                onChangeListenTo: ['newPassword'],
+                onChange: ({ value, fieldApi }) => {
+                  if (!value) return 'Please confirm your password'
+                  if (value !== fieldApi.form.getFieldValue('newPassword')) return 'Passwords do not match'
+                },
+              }}
               children={(field) => (
                 <FormInput
                   field={field}

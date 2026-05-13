@@ -56,7 +56,9 @@ export default function Dashboard() {
   const domains = data?.data.domains ?? []
   const allCerts: CertRecord[] = domains.flatMap((d) => d.certs)
   const stats  = buildStats(allCerts, isLoading)
-  const recent = allCerts.slice(0, 5)
+  const recent = [...allCerts]
+    .sort((a, b) => new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime())
+    .slice(0, 5)
 
   return (
     <main className="flex-1 p-5 lg:p-8 max-w-6xl w-full mx-auto space-y-5">

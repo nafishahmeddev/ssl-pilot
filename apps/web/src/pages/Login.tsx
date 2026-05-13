@@ -1,7 +1,7 @@
 import { useMutation } from '@tanstack/react-query'
 import { loginApi } from '../api/auth'
 import { setAccessToken } from '../store/auth'
-import { useNavigate } from 'react-router-dom'
+import { useNavigate, Link } from 'react-router-dom'
 import { useForm } from '@tanstack/react-form'
 import { getApiError } from '../api/errors'
 import { loginSchema } from '../types/auth'
@@ -38,9 +38,9 @@ export default function Login() {
       footer={
         <>
           Don't have an account?{' '}
-          <a href="/register" className="link link-primary font-medium">
+          <Link to="/register" className="link link-primary font-medium">
             Create one
-          </a>
+          </Link>
         </>
       }
     >

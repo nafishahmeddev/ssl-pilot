@@ -1,6 +1,6 @@
 import { useMutation } from '@tanstack/react-query'
 import { registerApi } from '../api/auth'
-import { useNavigate } from 'react-router-dom'
+import { useNavigate, Link } from 'react-router-dom'
 import { useForm } from '@tanstack/react-form'
 import { getApiError } from '../api/errors'
 import { registerSchema } from '../types/auth'
@@ -38,9 +38,9 @@ export default function Register() {
       footer={
         <>
           Already have an account?{' '}
-          <a href="/login" className="link link-primary font-medium">
+          <Link to="/login" className="link link-primary font-medium">
             Sign in
-          </a>
+          </Link>
         </>
       }
     >

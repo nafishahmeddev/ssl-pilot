@@ -214,7 +214,7 @@ export default function CertDetail() {
 
         <div className="rounded-2xl p-5 flex flex-col gap-2" style={{ background: 'var(--c-card)', border: '1px solid var(--c-border)' }}>
           <p className="text-xs font-semibold uppercase tracking-widest" style={{ color: 'var(--c-text-3)' }}>Issued</p>
-          <p className="text-sm font-semibold" style={{ color: 'var(--c-primary)' }}>{fmt(cert.issuedAt ?? cert.createdAt)}</p>
+          <p className="text-sm font-semibold" style={{ color: 'var(--c-primary)' }}>{fmt(cert.issuedAt)}</p>
         </div>
 
         <div className="rounded-2xl p-5 flex flex-col gap-2" style={{ background: 'var(--c-card)', border: '1px solid var(--c-border)' }}>
@@ -548,7 +548,7 @@ function StatusBadge({ status, expiring }: { status: CertStatus; expiring?: bool
     failed:             { label: 'Failed',            cls: 'badge-error'   },
   }
   const { label, cls } = map[status]
-  return <span className={`badge ${cls}`}>{label}</span>
+  return <span className={`badge badge-sm ${cls}`}>{label}</span>
 }
 
 function CertModal({
