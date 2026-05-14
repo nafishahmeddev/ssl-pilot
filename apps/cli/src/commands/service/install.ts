@@ -1,7 +1,7 @@
 import { Command } from 'commander'
 import input from '@inquirer/input'
 import { writeFile, mkdir } from 'fs/promises'
-import { execSync } from 'child_process'
+import { spawnSync } from 'child_process'
 import { readConfig, writeConfig, HOOKS_DIR } from '../../config.js'
 import { domainHookPath, GLOBAL_HOOK } from '../../hooks.js'
 
@@ -126,9 +126,17 @@ export const installCommand = new Command('install')
       await writeFile(UNIT_PATH, buildUnitContent(apiKey), { encoding: 'utf8', mode: 0o600 })
       console.log(`✓ Systemd unit written to ${UNIT_PATH}`)
 
-      execSync('systemctl daemon-reload', { stdio: 'inherit' })
-      execSync('systemctl enable ssl-pilot', { stdio: 'inherit' })
-      execSync('systemctl restart ssl-pilot', { stdio: 'inherit' })
+      for (const args of [
+        ['daemon-reload'],
+        ['enable',  'ssl-pilot'],
+        ['restart', 'ssl-pilot'],
+      ]) {
+        const r = spawnSync('systemctl', args, { stdio: ['inherit', 'inherit', 'pipe'], encoding: 'utf8' })
+        if (r.status !== 0) {
+          if (r.stderr?.trim()) process.stderr.write(r.stderr + '\n')
+          process.exit(1)
+        }
+      }
 
       console.log('\n✓ Service enabled and started.\n')
       console.log('  Edit hooks in  : /etc/ssl-pilot/hooks/')

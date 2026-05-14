@@ -1,17 +1,29 @@
 import { Command } from 'commander'
-import { execSync } from 'child_process'
+import { spawnSync } from 'child_process'
 import { unlink } from 'fs/promises'
 import { resolveApiKey, runRenewalCycle } from './renew.js'
 
 const UNIT      = 'ssl-pilot'
 const UNIT_PATH = '/etc/systemd/system/ssl-pilot.service'
 
-function systemctl(args: string): void {
-  try {
-    execSync(`systemctl ${args}`, { stdio: 'inherit' })
-  } catch {
-    process.exit(1)
+/**
+ * Runs systemctl with stdout inherited (visible) and stderr captured.
+ * Stderr is only printed if the command fails, so noisy shim warnings
+ * from Python-based systemctl stubs don't pollute normal output.
+ */
+function systemctl(args: string[], exitOnFail = true): boolean {
+  const result = spawnSync('systemctl', args, {
+    stdio: ['inherit', 'inherit', 'pipe'],
+    encoding: 'utf8',
+  })
+
+  if (result.status !== 0) {
+    if (result.stderr?.trim()) process.stderr.write(result.stderr + '\n')
+    if (exitOnFail) process.exit(1)
+    return false
   }
+
+  return true
 }
 
 function requireRoot(): void {
@@ -23,15 +35,15 @@ function requireRoot(): void {
 
 export const startCommand = new Command('start')
   .description('Start the SSL Pilot service')
-  .action(() => { requireRoot(); systemctl(`start ${UNIT}`) })
+  .action(() => { requireRoot(); systemctl(['start', UNIT]) })
 
 export const stopCommand = new Command('stop')
   .description('Stop the SSL Pilot service')
-  .action(() => { requireRoot(); systemctl(`stop ${UNIT}`) })
+  .action(() => { requireRoot(); systemctl(['stop', UNIT]) })
 
 export const statusCommand = new Command('status')
   .description('Show SSL Pilot service status')
-  .action(() => systemctl(`status ${UNIT}`))
+  .action(() => { systemctl(['status', UNIT]) })
 
 export const checkCommand = new Command('check')
   .description('Run one renewal check cycle immediately (for testing)')
@@ -67,8 +79,8 @@ export const uninstallServiceCommand = new Command('uninstall')
 
     process.stdout.write('\nRemoving SSL Pilot service…\n\n')
 
-    try { execSync(`systemctl stop ${UNIT}`,    { stdio: 'pipe' }) } catch { /* not running */ }
-    try { execSync(`systemctl disable ${UNIT}`, { stdio: 'pipe' }) } catch { /* not enabled */ }
+    systemctl(['stop',    UNIT], false)
+    systemctl(['disable', UNIT], false)
 
     try {
       await unlink(UNIT_PATH)
@@ -77,7 +89,7 @@ export const uninstallServiceCommand = new Command('uninstall')
       if ((err as NodeJS.ErrnoException).code !== 'ENOENT') throw err
     }
 
-    try { execSync('systemctl daemon-reload', { stdio: 'pipe' }) } catch { /* ignore */ }
+    systemctl(['daemon-reload'], false)
 
     process.stdout.write('\n  ✓ Service uninstalled.\n')
     process.stdout.write('    /etc/ssl-pilot/ (config, state, certs, hooks) was NOT removed.\n')
