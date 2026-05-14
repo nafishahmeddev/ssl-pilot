@@ -55,7 +55,22 @@ export const registerHandler = factory.createHandlers(
       const user = new UserModel({ name, email, password, organizationId: org._id, role: 'admin' })
       await user.save()
 
-      return ApiResponse.success(c, { userId: user._id, organizationId: org._id }, 'Registration successful', 201)
+      const accessToken = await createAccessToken(user)
+
+      const now = Math.floor(Date.now() / 1000)
+      const refreshToken = await sign(
+        { sub: user._id.toString(), exp: now + 60 * 60 * 24 * 7 },
+        env.JWT_REFRESH_SECRET,
+      )
+
+      setCookie(c, 'refreshToken', refreshToken, {
+        httpOnly: true,
+        secure: env.NODE_ENV === 'production',
+        sameSite: 'Strict',
+        maxAge: 60 * 60 * 24 * 7,
+      })
+
+      return ApiResponse.success(c, { accessToken }, 'Registration successful', 201)
     } catch (error: unknown) {
       return ApiResponse.error(c, (error as Error).message, 'REGISTER_ERROR', 500)
     }

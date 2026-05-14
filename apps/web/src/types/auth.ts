@@ -26,6 +26,5 @@ export type AuthResponse = ApiResponse<{
 }>
 
 export type RegisterResponse = ApiResponse<{
-  userId: string
-  organizationId: string
+  accessToken: string
 }>

@@ -1,5 +1,6 @@
 import { useMutation } from '@tanstack/react-query'
 import { registerApi } from '../api/auth'
+import { setAccessToken } from '../store/auth'
 import { useNavigate, Link } from 'react-router-dom'
 import { useForm } from '@tanstack/react-form'
 import { getApiError } from '../api/errors'
@@ -14,8 +15,9 @@ export default function Register() {
 
   const mutation = useMutation({
     mutationFn: registerApi,
-    onSuccess: () => {
-      navigate('/login')
+    onSuccess: (data) => {
+      setAccessToken(data.data.accessToken)
+      navigate('/dashboard')
     },
   })
 
@@ -27,7 +29,7 @@ export default function Register() {
       password: '',
     } satisfies RegisterCredentials,
     onSubmit: async ({ value }) => {
-      mutation.mutate(value)
+      await mutation.mutateAsync(value)
     },
   })
 

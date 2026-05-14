@@ -27,7 +27,7 @@ export default function Login() {
       password: '',
     } satisfies LoginCredentials,
     onSubmit: async ({ value }) => {
-      mutation.mutate(value)
+      await mutation.mutateAsync(value)
     },
   })
 
