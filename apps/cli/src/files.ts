@@ -1,11 +1,9 @@
 import { mkdir, writeFile, chmod } from 'fs/promises'
 import { join } from 'path'
-
-const BASE_DIR = '/etc/ssl-pilot'
+import { SSL_PILOT_DIR } from './config.js'
 
 function domainDir(certName: string): string {
-  const domain = certName.replace(/^\*\./, '')
-  return join(BASE_DIR, domain)
+  return join(SSL_PILOT_DIR, certName.replace(/^\*\./, ''))
 }
 
 export async function saveCert(
@@ -20,36 +18,34 @@ export async function saveCert(
   try {
     await mkdir(dir, { recursive: true })
   } catch (err) {
-    handleFsError(err, certName, dir)
+    fsError(err, certName, dir)
   }
 
   try {
-    await writeFile(certPath, certPem, { encoding: 'utf8' })
+    await writeFile(certPath, certPem, 'utf8')
     await chmod(certPath, 0o644)
   } catch (err) {
-    handleFsError(err, certName, certPath)
+    fsError(err, certName, certPath)
   }
 
   try {
-    // mode 0o600: owner read/write only — private key must not be world-readable
-    await writeFile(keyPath, keyPem, { encoding: 'utf8', mode: 0o600 })
+    await writeFile(keyPath, keyPem, 'utf8')
+    await chmod(keyPath, 0o600)
   } catch (err) {
-    handleFsError(err, certName, keyPath)
+    fsError(err, certName, keyPath)
   }
 
   return { certPath, keyPath }
 }
 
-function handleFsError(err: unknown, certName: string, path: string): never {
+function fsError(err: unknown, certName: string, path: string): never {
   const e = err as NodeJS.ErrnoException
 
   if (e.code === 'EACCES' || e.code === 'EPERM') {
-    console.error(`\nPermission denied writing to: ${path}`)
-    console.error(`${BASE_DIR} requires root access.\n`)
-    console.error(`Re-run with sudo:\n`)
-
     const name = certName.startsWith('*.') ? `'${certName}'` : certName
-    console.error(`  sudo sp download ${name}\n`)
+    process.stderr.write(`\nPermission denied: ${path}\n`)
+    process.stderr.write(`/etc/ssl-pilot requires root. Re-run:\n\n`)
+    process.stderr.write(`  sudo sp download ${name}\n\n`)
     process.exit(1)
   }
 

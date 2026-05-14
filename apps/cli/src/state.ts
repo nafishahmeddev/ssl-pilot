@@ -1,5 +1,6 @@
-import { readFile, writeFile, mkdir } from 'fs/promises'
+import { readFile, writeFile, rename, mkdir } from 'fs/promises'
 import { join } from 'path'
+import { randomBytes } from 'crypto'
 import { SSL_PILOT_DIR } from './config.js'
 
 const STATE_PATH = join(SSL_PILOT_DIR, 'state.json')
@@ -16,18 +17,20 @@ export async function readState(): Promise<StateFile> {
     const raw = await readFile(STATE_PATH, 'utf8')
     return JSON.parse(raw) as StateFile
   } catch (err) {
-    const e = err as NodeJS.ErrnoException
-    if (e.code === 'ENOENT') return {}
+    if ((err as NodeJS.ErrnoException).code === 'ENOENT') return {}
     throw err
   }
 }
 
 export async function updateCertState(certName: string, expiryDate: string): Promise<void> {
+  await mkdir(SSL_PILOT_DIR, { recursive: true })
+
   const state = await readState()
   state[certName] = { expiryDate, downloadedAt: new Date().toISOString() }
-  await mkdir(SSL_PILOT_DIR, { recursive: true })
-  await writeFile(STATE_PATH, JSON.stringify(state, null, 2) + '\n', {
-    encoding: 'utf8',
-    mode: 0o600,
-  })
+
+  const content = JSON.stringify(state, null, 2) + '\n'
+  const tmp     = join(SSL_PILOT_DIR, `.state-${randomBytes(4).toString('hex')}.tmp`)
+
+  await writeFile(tmp, content, { encoding: 'utf8', mode: 0o600 })
+  await rename(tmp, STATE_PATH)
 }
