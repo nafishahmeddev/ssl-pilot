@@ -41,6 +41,10 @@ export const stopCommand = new Command('stop')
   .description('Stop the SSL Pilot service')
   .action(() => { requireRoot(); systemctl(['stop', UNIT]) })
 
+export const restartCommand = new Command('restart')
+  .description('Restart the service — picks up config.json changes immediately')
+  .action(() => { requireRoot(); systemctl(['restart', UNIT]) })
+
 export const statusCommand = new Command('status')
   .description('Show SSL Pilot service status')
   .action(() => { systemctl(['status', UNIT]) })
