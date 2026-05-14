@@ -24,7 +24,6 @@ import {
   Plus,
   X,
   ExternalLink,
-  FileText,
   ArrowRight,
   ArrowLeft,
   Info,
@@ -33,13 +32,20 @@ import {
 
 const FQDN_REGEX = /^(\*\.)?([a-zA-Z0-9]([a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?\.)+[a-zA-Z]{2,}$/
 
-type ChallengeState = ChallengeInfo & { certName: string }
+type ChallengesState = { certName: string; challenges: ChallengeInfo[] }
 interface CertState extends IssuedCertificate { certName: string }
 interface WildcardChoiceState { certName: string; wildcard: WildcardInfo }
 
 function certTypeFromName(n: string): 'wildcard' | 'apex' | 'single' {
   if (n.startsWith('*.')) return 'wildcard'
   return n.split('.').length === 2 ? 'apex' : 'single'
+}
+
+function dnsRelativeLabel(txtName: string, certName: string): string {
+  const domain = certName.startsWith('*.') ? certName.slice(2) : certName
+  const parts  = domain.split('.')
+  const root   = parts.slice(-2).join('.')
+  return txtName.endsWith(`.${root}`) ? txtName.slice(0, -(root.length + 1)) : txtName
 }
 
 function certCoverageDesc(n: string): string {
@@ -69,10 +75,9 @@ export default function NewCertificate() {
   const navigate = useNavigate()
   const qc = useQueryClient()
 
-  const [formCertName, setFormCertName]           = useState('')
-  const [formChallengeType, setFormChallengeType] = useState<ChallengeType>(ChallengeType.DNS_01)
-  const [wildcardChoice, setWildcardChoice]       = useState<WildcardChoiceState | null>(null)
-  const [challenge, setChallenge]                 = useState<ChallengeState | null>(null)
+  const [formCertName, setFormCertName]     = useState('')
+  const [wildcardChoice, setWildcardChoice] = useState<WildcardChoiceState | null>(null)
+  const [challenges, setChallenges]         = useState<ChallengesState | null>(null)
   const [challengeVerifiedCert, setChallengeVerifiedCert] = useState<string | null>(null)
   const [certificate, setCertificate]             = useState<CertState | null>(null)
   const [copiedKey, setCopiedKey]                 = useState<string | null>(null)
@@ -92,7 +97,7 @@ export default function NewCertificate() {
       if (res.data.covered && res.data.wildcard) {
         setWildcardChoice({ certName, wildcard: res.data.wildcard })
       } else {
-        initiateMutation.mutate({ certName, challengeType: formChallengeType })
+        initiateMutation.mutate({ certName })
       }
     },
   })
@@ -108,22 +113,23 @@ export default function NewCertificate() {
   })
 
   const initiateMutation = useMutation({
-    mutationFn: ({ certName, challengeType, skipWildcardCheck = false }: { certName: string; challengeType: ChallengeType; skipWildcardCheck?: boolean }) =>
-      initiateSslApi(certName, challengeType, skipWildcardCheck),
+    mutationFn: ({ certName, skipWildcardCheck = false }: { certName: string; skipWildcardCheck?: boolean }) =>
+      initiateSslApi(certName, skipWildcardCheck),
     onSettled: (_, __, vars) => startCooldown(vars.certName, 45_000),
     onSuccess: (res, vars) => {
-      setChallenge({ certName: vars.certName, ...res.data })
+      setChallenges({ certName: vars.certName, challenges: res.data.challenges })
       setWildcardChoice(null)
       qc.invalidateQueries({ queryKey: ['domains'] })
     },
   })
 
   const verifyMutation = useMutation({
-    mutationFn: (certName: string) => verifySslApi(certName),
+    mutationFn: ({ certName, challengeType }: { certName: string; challengeType: ChallengeType }) =>
+      verifySslApi(certName, challengeType),
     onSettled: () => verifyCD.start(),
-    onSuccess: (_, certName) => {
-      setChallengeVerifiedCert(certName)
-      setChallenge(null)
+    onSuccess: (_, vars) => {
+      setChallengeVerifiedCert(vars.certName)
+      setChallenges(null)
       qc.invalidateQueries({ queryKey: ['domains'] })
     },
   })
@@ -159,12 +165,10 @@ export default function NewCertificate() {
 
   const handleCertNameChange = (value: string) => {
     setFormCertName(value)
-    if (value.startsWith('*.')) setFormChallengeType(ChallengeType.DNS_01)
   }
 
-  const isWildcard    = formCertName.startsWith('*.')
   const isDomainValid = formCertName.length > 0 && FQDN_REGEX.test(formCertName)
-  const showForm      = !wildcardChoice && !challenge && !challengeVerifiedCert && !certificate
+  const showForm      = !wildcardChoice && !challenges && !challengeVerifiedCert && !certificate
 
   return (
     <main className="flex-1 p-5 lg:p-8 max-w-3xl w-full mx-auto space-y-5">
@@ -244,65 +248,12 @@ export default function NewCertificate() {
               )}
             </div>
 
-            <div>
-              <label className="text-xs font-semibold uppercase tracking-wider mb-3 block" style={{ color: 'var(--c-text-3)' }}>
-                Verification Method
-              </label>
-              <div className="grid sm:grid-cols-2 gap-3">
-                <button
-                  type="button"
-                  onClick={() => setFormChallengeType(ChallengeType.DNS_01)}
-                  className="text-left rounded-xl p-4 border-2 transition-all"
-                  style={
-                    formChallengeType === ChallengeType.DNS_01
-                      ? { borderColor: 'var(--c-primary)', background: 'var(--c-primary-soft)' }
-                      : { borderColor: 'var(--c-border)', background: 'var(--c-surface)' }
-                  }
-                >
-                  <div className="flex items-center gap-2 mb-2">
-                    <Globe className="w-4 h-4 shrink-0" style={{ color: formChallengeType === ChallengeType.DNS_01 ? 'var(--c-primary)' : 'var(--c-text-2)' }} />
-                    <span className="font-semibold text-sm" style={{ color: 'var(--c-text-1)' }}>DNS-01</span>
-                    <span className="badge badge-xs badge-success ml-auto">Recommended</span>
-                  </div>
-                  <p className="text-xs leading-relaxed" style={{ color: 'var(--c-text-2)' }}>
-                    Add a TXT record to your DNS. Works with all domain types including wildcards.
-                  </p>
-                  <p className="text-xs mt-2 font-mono" style={{ color: 'var(--c-text-3)' }}>Needs: DNS provider access</p>
-                </button>
-
-                <button
-                  type="button"
-                  disabled={isWildcard}
-                  onClick={() => !isWildcard && setFormChallengeType(ChallengeType.HTTP_01)}
-                  className="text-left rounded-xl p-4 border-2 transition-all disabled:opacity-40 disabled:cursor-not-allowed"
-                  style={
-                    formChallengeType === ChallengeType.HTTP_01 && !isWildcard
-                      ? { borderColor: 'var(--c-primary)', background: 'var(--c-primary-soft)' }
-                      : { borderColor: 'var(--c-border)', background: 'var(--c-surface)' }
-                  }
-                >
-                  <div className="flex items-center gap-2 mb-2">
-                    <FileText className="w-4 h-4 shrink-0" style={{ color: formChallengeType === ChallengeType.HTTP_01 && !isWildcard ? 'var(--c-primary)' : 'var(--c-text-2)' }} />
-                    <span className="font-semibold text-sm" style={{ color: 'var(--c-text-1)' }}>HTTP-01</span>
-                    {isWildcard && <span className="badge badge-xs badge-error ml-auto">No wildcards</span>}
-                  </div>
-                  <p className="text-xs leading-relaxed" style={{ color: 'var(--c-text-2)' }}>
-                    Serve a verification file on your web server. No DNS access needed.
-                  </p>
-                  <p className="text-xs mt-2 font-mono" style={{ color: 'var(--c-text-3)' }}>Needs: port 80 · no wildcards</p>
-                </button>
-              </div>
-
-              <div className="mt-3 flex items-start gap-2 px-1">
-                <Info className="w-3.5 h-3.5 mt-0.5 shrink-0" style={{ color: 'var(--c-text-3)' }} />
-                <p className="text-xs" style={{ color: 'var(--c-text-3)' }}>
-                  {isWildcard
-                    ? 'Wildcards require DNS-01 per RFC 8555 — HTTP-01 cannot prove wildcard authority.'
-                    : formChallengeType === ChallengeType.DNS_01
-                    ? "You'll add a TXT record in your DNS provider (Cloudflare, Route 53, Namecheap…)."
-                    : "You'll create a file on your web server at /.well-known/acme-challenge/ accessible over HTTP."}
-                </p>
-              </div>
+            <div className="flex items-start gap-2 px-1">
+              <Info className="w-3.5 h-3.5 mt-0.5 shrink-0" style={{ color: 'var(--c-text-3)' }} />
+              <p className="text-xs" style={{ color: 'var(--c-text-3)' }}>
+                After continuing, Let's Encrypt will return all available challenge methods for this domain.
+                You'll pick whichever one you can complete.
+              </p>
             </div>
 
             {(checkMutation.isError || initiateMutation.isError) && (
@@ -332,7 +283,6 @@ export default function NewCertificate() {
       {wildcardChoice && (
         <WildcardChoiceCard
           choice={wildcardChoice}
-          challengeType={formChallengeType}
           adoptPending={adoptMutation.isPending}
           initiatePending={initiateMutation.isPending}
           adoptError={adoptMutation.isError ? getApiError(adoptMutation.error, 'Adoption failed.') : null}
@@ -340,23 +290,23 @@ export default function NewCertificate() {
           onUseWildcard={() => adoptMutation.mutate({ certName: wildcardChoice.certName, wildcardCertId: wildcardChoice.wildcard.id })}
           onIssueDedicated={() => {
             setWildcardChoice(null)
-            initiateMutation.mutate({ certName: wildcardChoice.certName, challengeType: formChallengeType, skipWildcardCheck: true })
+            initiateMutation.mutate({ certName: wildcardChoice.certName, skipWildcardCheck: true })
           }}
           onReset={handleBack}
         />
       )}
 
-      {/* ── Step 2: DNS/HTTP challenge ── */}
-      {challenge && (
+      {/* ── Step 2: Prove ownership ── */}
+      {challenges && (
         <ChallengeCard
-          challenge={challenge}
+          state={challenges}
           copiedKey={copiedKey}
           verifyPending={verifyMutation.isPending}
           verifyIsCooling={verifyCD.isCooling}
           verifyCooldownLeft={verifyCD.secondsLeft}
           verifyError={verifyMutation.isError ? getApiError(verifyMutation.error, 'Verification failed.') : null}
           onCopy={handleCopy}
-          onVerify={() => verifyMutation.mutate(challenge.certName)}
+          onVerify={(challengeType) => verifyMutation.mutate({ certName: challenges.certName, challengeType })}
           onReset={handleBack}
         />
       )}
@@ -391,7 +341,6 @@ export default function NewCertificate() {
 
 function WildcardChoiceCard({
   choice,
-  challengeType,
   adoptPending,
   initiatePending,
   adoptError,
@@ -401,7 +350,6 @@ function WildcardChoiceCard({
   onReset,
 }: {
   choice: WildcardChoiceState
-  challengeType: ChallengeType
   adoptPending: boolean
   initiatePending: boolean
   adoptError: string | null
@@ -465,8 +413,7 @@ function WildcardChoiceCard({
             <span className="font-semibold text-sm" style={{ color: 'var(--c-text-1)' }}>Dedicated Cert</span>
           </div>
           <p className="text-xs leading-relaxed" style={{ color: 'var(--c-text-2)' }}>
-            Issue a separate certificate with its own key via{' '}
-            <span className="font-mono">{challengeType}</span> challenge. Independent renewal cycle.
+            Issue a dedicated certificate with its own ACME order. Let's Encrypt will provide available challenge methods. Independent renewal cycle.
           </p>
         </button>
       </div>
@@ -489,7 +436,7 @@ function WildcardChoiceCard({
 // ── ChallengeCard ─────────────────────────────────────────────────────────────
 
 function ChallengeCard({
-  challenge,
+  state,
   copiedKey,
   verifyPending,
   verifyIsCooling,
@@ -499,17 +446,22 @@ function ChallengeCard({
   onVerify,
   onReset,
 }: {
-  challenge: ChallengeState
+  state: ChallengesState
   copiedKey: string | null
   verifyPending: boolean
   verifyIsCooling: boolean
   verifyCooldownLeft: number
   verifyError: string | null
   onCopy: (text: string, key: string) => void
-  onVerify: () => void
+  onVerify: (challengeType: ChallengeType) => void
   onReset: () => void
 }) {
-  const isDns = challenge.challengeType === ChallengeType.DNS_01
+  const [activeVerifyType, setActiveVerifyType] = useState<ChallengeType | null>(null)
+
+  const handleVerify = (ct: ChallengeType) => {
+    setActiveVerifyType(ct)
+    onVerify(ct)
+  }
 
   return (
     <div className="rounded-2xl p-6 sm:p-8" style={{ background: 'var(--c-card)', border: '1px solid oklch(72% 0.19 80 / 0.35)' }}>
@@ -519,120 +471,143 @@ function ChallengeCard({
           <AlertTriangle className="w-5 h-5" style={{ color: 'var(--c-warning)' }} />
         </div>
         <div>
-          <div className="flex items-center gap-2 mb-0.5">
-            <h2 className="text-base font-bold" style={{ color: 'var(--c-text-1)' }}>
-              {isDns ? 'Add a DNS TXT Record' : 'Serve an HTTP Challenge File'}
-            </h2>
-            <span className="badge badge-sm badge-ghost font-mono">{challenge.challengeType}</span>
-          </div>
+          <h2 className="text-base font-bold" style={{ color: 'var(--c-text-1)' }}>Prove Domain Ownership</h2>
           <p className="text-sm" style={{ color: 'var(--c-text-2)' }}>
-            Proving you control <span className="font-semibold font-mono" style={{ color: 'var(--c-primary)' }}>{challenge.certName}</span>
-            {isDns ? ' — add the record below, then click Verify.' : ' — create the file below, then click Verify.'}
+            Complete <strong>any one</strong> of the challenges below to verify you control{' '}
+            <span className="font-semibold font-mono" style={{ color: 'var(--c-primary)' }}>{state.certName}</span>.
           </p>
         </div>
       </div>
 
-      {isDns && (
-        <>
-          <div className="space-y-2 mb-4">
-            {[
-              { n: 1, text: 'Log in to your DNS provider (Cloudflare, Route 53, Namecheap, etc.)' },
-              { n: 2, text: <span>Add a new <span className="font-mono font-semibold">TXT</span> record using the Name and Value below</span> },
-              { n: 3, text: 'Wait for DNS to propagate (usually 1–10 min), then click Verify' },
-            ].map(({ n, text }) => (
-              <div key={n} className="flex items-start gap-2.5">
-                <span
-                  className="w-5 h-5 rounded-full flex items-center justify-center text-xs font-bold shrink-0 mt-0.5"
-                  style={{ background: 'var(--c-primary-soft)', color: 'var(--c-primary)' }}
-                >
-                  {n}
-                </span>
-                <p className="text-xs" style={{ color: 'var(--c-text-2)' }}>{text}</p>
-              </div>
-            ))}
-          </div>
+      <div className="space-y-4">
+        {state.challenges.map((ch) => {
+          const isDns = ch.challengeType === ChallengeType.DNS_01
+          const isThisVerifying = verifyPending && activeVerifyType === ch.challengeType
 
-          <div className="rounded-xl p-5 space-y-5 font-mono text-sm mb-3" style={{ background: 'var(--c-surface)', border: '1px solid var(--c-border)' }}>
-            <div className="flex items-center justify-between">
-              <span className="text-xs uppercase tracking-wider" style={{ color: 'var(--c-text-3)' }}>Record Type</span>
-              <span className="badge badge-neutral font-mono text-xs">TXT</span>
+          return (
+            <div key={ch.challengeType} className="rounded-xl p-5" style={{ background: 'var(--c-surface)', border: '1px solid var(--c-border)' }}>
+              <div className="flex items-center gap-2 mb-4">
+                <span className="badge badge-sm badge-ghost font-mono">{ch.challengeType}</span>
+                <span className="text-xs font-semibold" style={{ color: 'var(--c-text-2)' }}>
+                  {isDns ? 'DNS TXT Record' : 'HTTP File Challenge'}
+                </span>
+              </div>
+
+              {isDns && ch.challengeType === ChallengeType.DNS_01 && (
+                <>
+                  <div className="space-y-2 mb-4">
+                    {[
+                      { n: 1, text: 'Log in to your DNS provider (Cloudflare, Route 53, Namecheap, etc.)' },
+                      { n: 2, text: <span>Add a new <span className="font-mono font-semibold">TXT</span> record using the Name and Value below</span> },
+                      { n: 3, text: 'Wait for DNS to propagate (usually 1–10 min), then click Verify' },
+                    ].map(({ n, text }) => (
+                      <div key={n} className="flex items-start gap-2.5">
+                        <span className="w-5 h-5 rounded-full flex items-center justify-center text-xs font-bold shrink-0 mt-0.5" style={{ background: 'var(--c-primary-soft)', color: 'var(--c-primary)' }}>
+                          {n}
+                        </span>
+                        <p className="text-xs" style={{ color: 'var(--c-text-2)' }}>{text}</p>
+                      </div>
+                    ))}
+                  </div>
+
+                  <div className="rounded-xl p-4 space-y-4 font-mono text-sm mb-3" style={{ background: 'var(--c-card)', border: '1px solid var(--c-border)' }}>
+                    <div className="flex items-center justify-between">
+                      <span className="text-xs uppercase tracking-wider" style={{ color: 'var(--c-text-3)' }}>Record Type</span>
+                      <span className="badge badge-neutral font-mono text-xs">TXT</span>
+                    </div>
+                    {[
+                      { label: 'Name',  value: ch.txtName,  key: 'dns-name',  color: 'var(--c-info)'   },
+                      { label: 'Value', value: ch.txtValue, key: 'dns-value', color: 'var(--c-purple)' },
+                    ].map(({ label, value, key, color }) => (
+                      <div key={key} className="space-y-1.5">
+                        <span className="text-xs uppercase tracking-wider" style={{ color: 'var(--c-text-3)' }}>{label}</span>
+                        <div className="flex items-center gap-2">
+                          <span className="flex-1 break-all text-sm" style={{ color }}>{value}</span>
+                          <button onClick={() => onCopy(value, key)} className="btn btn-ghost btn-xs btn-square shrink-0">
+                            {copiedKey === key ? <Check className="w-3.5 h-3.5 text-success" /> : <Copy className="w-3.5 h-3.5" style={{ color: 'var(--c-text-3)' }} />}
+                          </button>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+
+                  <div className="flex flex-col sm:flex-row sm:items-center gap-2 sm:gap-4 mb-3">
+                    <p className="text-xs" style={{ color: 'var(--c-text-3)' }}>
+                      If your provider auto-appends your root domain, use{' '}
+                      <span className="font-mono font-semibold">{dnsRelativeLabel(ch.txtName, state.certName)}</span>{' '}
+                      instead of the full FQDN.
+                    </p>
+                    <a
+                      href={`https://dnschecker.org/#TXT/${ch.txtName}`}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="flex items-center gap-1 text-xs whitespace-nowrap shrink-0"
+                      style={{ color: 'var(--c-primary)' }}
+                    >
+                      <ExternalLink className="w-3 h-3" />
+                      Check DNS propagation
+                    </a>
+                  </div>
+                </>
+              )}
+
+              {!isDns && ch.challengeType === ChallengeType.HTTP_01 && (
+                <>
+                  <div className="space-y-2 mb-4">
+                    {[
+                      { n: 1, text: <span>Create the directory <span className="font-mono">/.well-known/acme-challenge/</span> in your web root</span> },
+                      { n: 2, text: <span>Create a file named <span className="font-mono font-semibold">{ch.token}</span> (no extension) with the File Content below</span> },
+                      { n: 3, text: 'Confirm it loads over plain HTTP (not HTTPS) on port 80' },
+                      { n: 4, text: "Click Verify — Let's Encrypt will fetch it" },
+                    ].map(({ n, text }) => (
+                      <div key={n} className="flex items-start gap-2.5">
+                        <span className="w-5 h-5 rounded-full flex items-center justify-center text-xs font-bold shrink-0 mt-0.5" style={{ background: 'var(--c-primary-soft)', color: 'var(--c-primary)' }}>
+                          {n}
+                        </span>
+                        <p className="text-xs" style={{ color: 'var(--c-text-2)' }}>{text}</p>
+                      </div>
+                    ))}
+                  </div>
+
+                  <div className="rounded-xl p-4 space-y-4 font-mono text-sm mb-3" style={{ background: 'var(--c-card)', border: '1px solid var(--c-border)' }}>
+                    {[
+                      { label: 'Challenge URL', value: `http://${state.certName}/.well-known/acme-challenge/${ch.token}`, key: 'http-url',     color: 'var(--c-info)'   },
+                      { label: 'File Content',  value: ch.keyAuth,                                                         key: 'http-content', color: 'var(--c-purple)' },
+                    ].map(({ label, value, key, color }) => (
+                      <div key={key} className="space-y-1.5">
+                        <span className="text-xs uppercase tracking-wider" style={{ color: 'var(--c-text-3)' }}>{label}</span>
+                        <div className="flex items-center gap-2">
+                          <span className="flex-1 break-all text-sm" style={{ color }}>{value}</span>
+                          <button onClick={() => onCopy(value, key)} className="btn btn-ghost btn-xs btn-square shrink-0">
+                            {copiedKey === key ? <Check className="w-3.5 h-3.5 text-success" /> : <Copy className="w-3.5 h-3.5" style={{ color: 'var(--c-text-3)' }} />}
+                          </button>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                  <p className="text-xs mb-3" style={{ color: 'var(--c-text-3)' }}>
+                    File must be plain text. HTTP→HTTPS redirects will cause verification to fail.
+                  </p>
+                </>
+              )}
+
+              <div className="flex justify-end">
+                <button
+                  className="btn btn-primary btn-sm gap-2"
+                  disabled={verifyPending || verifyIsCooling}
+                  onClick={() => handleVerify(ch.challengeType)}
+                >
+                  {isThisVerifying
+                    ? <><span className="loading loading-spinner loading-xs" /> Verifying…</>
+                    : verifyIsCooling
+                    ? <><ShieldCheck className="w-3.5 h-3.5" /> Wait {verifyCooldownLeft}s</>
+                    : <><ShieldCheck className="w-3.5 h-3.5" /> Verify with {ch.challengeType}</>}
+                </button>
+              </div>
             </div>
-            {[
-              { label: 'Name',  value: challenge.txtName,  key: 'dns-name',  color: 'var(--c-info)'   },
-              { label: 'Value', value: challenge.txtValue, key: 'dns-value', color: 'var(--c-purple)' },
-            ].map(({ label, value, key, color }) => (
-              <div key={key} className="space-y-1.5">
-                <span className="text-xs uppercase tracking-wider" style={{ color: 'var(--c-text-3)' }}>{label}</span>
-                <div className="flex items-center gap-2">
-                  <span className="flex-1 break-all text-sm" style={{ color }}>{value}</span>
-                  <button onClick={() => onCopy(value, key)} className="btn btn-ghost btn-xs btn-square shrink-0">
-                    {copiedKey === key ? <Check className="w-3.5 h-3.5 text-success" /> : <Copy className="w-3.5 h-3.5" style={{ color: 'var(--c-text-3)' }} />}
-                  </button>
-                </div>
-              </div>
-            ))}
-          </div>
-
-          <div className="flex flex-col sm:flex-row sm:items-center gap-2 sm:gap-4 mb-1">
-            <p className="text-xs" style={{ color: 'var(--c-text-3)' }}>
-              Some providers want only the subdomain part (e.g. <span className="font-mono">_acme-challenge</span> not the full FQDN).
-            </p>
-            <a
-              href={`https://dnschecker.org/#TXT/${challenge.txtName}`}
-              target="_blank"
-              rel="noopener noreferrer"
-              className="flex items-center gap-1 text-xs whitespace-nowrap shrink-0"
-              style={{ color: 'var(--c-primary)' }}
-            >
-              <ExternalLink className="w-3 h-3" />
-              Check DNS propagation
-            </a>
-          </div>
-        </>
-      )}
-
-      {!isDns && (
-        <>
-          <div className="space-y-2 mb-4">
-            {[
-              { n: 1, text: <span>Create the directory <span className="font-mono">/.well-known/acme-challenge/</span> in your web root</span> },
-              { n: 2, text: <span>Create a file named <span className="font-mono font-semibold">{challenge.token}</span> (no extension) with the File Content below</span> },
-              { n: 3, text: 'Confirm it loads over plain HTTP (not HTTPS) on port 80' },
-              { n: 4, text: "Click Verify — Let's Encrypt will fetch it" },
-            ].map(({ n, text }) => (
-              <div key={n} className="flex items-start gap-2.5">
-                <span
-                  className="w-5 h-5 rounded-full flex items-center justify-center text-xs font-bold shrink-0 mt-0.5"
-                  style={{ background: 'var(--c-primary-soft)', color: 'var(--c-primary)' }}
-                >
-                  {n}
-                </span>
-                <p className="text-xs" style={{ color: 'var(--c-text-2)' }}>{text}</p>
-              </div>
-            ))}
-          </div>
-
-          <div className="rounded-xl p-5 space-y-5 font-mono text-sm mb-3" style={{ background: 'var(--c-surface)', border: '1px solid var(--c-border)' }}>
-            {[
-              { label: 'Challenge URL', value: `http://${challenge.certName}/.well-known/acme-challenge/${challenge.token}`, key: 'http-url',     color: 'var(--c-info)'   },
-              { label: 'File Content',  value: challenge.keyAuth,                                                              key: 'http-content', color: 'var(--c-purple)' },
-            ].map(({ label, value, key, color }) => (
-              <div key={key} className="space-y-1.5">
-                <span className="text-xs uppercase tracking-wider" style={{ color: 'var(--c-text-3)' }}>{label}</span>
-                <div className="flex items-center gap-2">
-                  <span className="flex-1 break-all text-sm" style={{ color }}>{value}</span>
-                  <button onClick={() => onCopy(value, key)} className="btn btn-ghost btn-xs btn-square shrink-0">
-                    {copiedKey === key ? <Check className="w-3.5 h-3.5 text-success" /> : <Copy className="w-3.5 h-3.5" style={{ color: 'var(--c-text-3)' }} />}
-                  </button>
-                </div>
-              </div>
-            ))}
-          </div>
-          <p className="text-xs mb-1" style={{ color: 'var(--c-text-3)' }}>
-            File must be plain text. HTTP→HTTPS redirects will cause verification to fail.
-          </p>
-        </>
-      )}
+          )
+        })}
+      </div>
 
       {verifyError && (
         <div className="alert alert-error mt-4 text-sm">
@@ -641,20 +616,9 @@ function ChallengeCard({
         </div>
       )}
 
-      <div className="flex flex-col sm:flex-row gap-3 justify-between mt-5">
+      <div className="mt-5">
         <button onClick={onReset} className="btn btn-ghost btn-sm gap-2" style={{ color: 'var(--c-text-2)' }}>
           <RotateCcw className="w-4 h-4" /> Cancel
-        </button>
-        <button
-          className="btn btn-primary gap-2"
-          disabled={verifyPending || verifyIsCooling}
-          onClick={onVerify}
-        >
-          {verifyPending
-            ? <><span className="loading loading-spinner loading-sm" /> Verifying…</>
-            : verifyIsCooling
-            ? <><ShieldCheck className="w-4 h-4" /> Wait {verifyCooldownLeft}s</>
-            : <><ShieldCheck className="w-4 h-4" /> Verify Ownership</>}
         </button>
       </div>
     </div>

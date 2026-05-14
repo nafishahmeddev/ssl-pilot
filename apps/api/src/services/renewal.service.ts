@@ -15,7 +15,7 @@
  */
 
 import { Types } from 'mongoose'
-import { CertificateModel, ChallengeType } from '@src/models/certificate.model'
+import { CertificateModel } from '@src/models/certificate.model'
 import { UserModel } from '@src/models/user.model'
 import { acmeService } from '@src/services/acme.service'
 import { logger } from '@src/shared/utils/logger'
@@ -120,7 +120,6 @@ async function initiateRenewalOrders(): Promise<RenewalResult> {
         cert.certName,
         cert.organizationId.toString(),
         admin.email,
-        cert.challengeType ?? ChallengeType.DNS_01,
       )
 
       // Clear retry bookkeeping on success

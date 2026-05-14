@@ -26,7 +26,7 @@ router.get('/certs/:id',     ...getCertHandler)
 router.delete('/certs/:id',  ...deleteCertHandler)
 
 // ACME flow
-router.get('/wildcard-check',...wildcardCheckHandler)
+router.get('/wildcard-check', ...wildcardCheckHandler)
 router.post('/adopt-wildcard',...adoptWildcardHandler)
 router.post('/initiate',     ...initiateSslHandler)
 router.post('/verify',       ...verifyChallengeHandler)

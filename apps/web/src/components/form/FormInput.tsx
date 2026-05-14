@@ -1,11 +1,14 @@
 import type { HTMLInputTypeAttribute, ReactNode } from 'react'
 import { useState } from 'react'
-import type { AnyFieldApi } from '@tanstack/react-form'
+import type { FieldApi } from '@tanstack/react-form'
 import { FieldInfo } from './FieldInfo'
 import { Eye, EyeOff } from 'lucide-react'
 
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+type StringFieldApi = FieldApi<any, any, any, any, string>
+
 interface FormInputProps {
-  field: AnyFieldApi
+  field: StringFieldApi
   label: string
   type?: HTMLInputTypeAttribute
   placeholder?: string
@@ -38,9 +41,9 @@ export function FormInput({ field, label, type = 'text', placeholder, icon }: Fo
           id={field.name}
           name={field.name}
           type={inputType}
-          value={field.state.value as string}
+          value={field.state.value}
           onBlur={field.handleBlur}
-          onChange={(e) => field.handleChange(e.target.value as never)}
+          onChange={(e) => field.handleChange(e.target.value)}
           className="grow bg-transparent outline-none min-w-0"
           placeholder={placeholder}
         />

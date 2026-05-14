@@ -127,16 +127,17 @@ export const meHandler = factory.createHandlers(async (c) => {
   const userId = c.get('userId')
 
   try {
-    const user = await UserModel.findById(userId).populate('organizationId').lean()
+    const user = await UserModel.findById(userId)
+      .populate<{ organizationId: IOrganization }>('organizationId')
+      .lean()
     if (!user) {
       return ApiResponse.error(c, 'User not found', 'USER_NOT_FOUND', 404)
     }
 
-    const org = user.organizationId as unknown as IOrganization
     return ApiResponse.success(c, {
       name: user.name,
       email: user.email,
-      company: org ? org.name : 'No Company',
+      company: user.organizationId?.name ?? 'No Company',
       role: user.role,
     }, 'User profile fetched.')
   } catch (error: unknown) {

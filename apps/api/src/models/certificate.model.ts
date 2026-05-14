@@ -39,7 +39,6 @@ export interface ICertificate extends Document {
   coveredByWildcardId?: Types.ObjectId
   // ── ACME order fields (cleared after issuance) ──────────────────────────────
   acmeOrderUrl?: string
-  acmeChallengeUrl?: string
   // ── DNS-01 ──────────────────────────────────────────────────────────────────
   txtRecordName?: string
   txtRecordValue?: string
@@ -75,7 +74,6 @@ const certificateSchema = new Schema<ICertificate>(
     challengeType:       { type: String, enum: Object.values(ChallengeType) },
     coveredByWildcardId: { type: Schema.Types.ObjectId, ref: 'Certificate' },
     acmeOrderUrl:        { type: String },
-    acmeChallengeUrl:    { type: String },
     txtRecordName:       { type: String },
     txtRecordValue:      { type: String },
     httpChallengeToken:  { type: String },

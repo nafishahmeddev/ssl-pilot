@@ -9,7 +9,6 @@ import type {
   AdoptWildcardResponse,
   WildcardCheckResponse,
 } from '../types/ssl'
-import { ChallengeType as ChallengeTypeConst } from '../types/ssl'
 
 export const getDomainsApi = async (): Promise<DomainsResponse> => {
   const response = await apiClient.get<DomainsResponse>('/api/ssl/domains')
@@ -49,19 +48,17 @@ export const adoptWildcardApi = async (
 
 export const initiateSslApi = async (
   certName: string,
-  challengeType: ChallengeType = ChallengeTypeConst.DNS_01,
   skipWildcardCheck = false,
 ): Promise<InitiateSslResponse> => {
   const response = await apiClient.post<InitiateSslResponse>('/api/ssl/initiate', {
     certName,
-    challengeType,
     skipWildcardCheck,
   })
   return response.data
 }
 
-export const verifySslApi = async (certName: string): Promise<VerifySslResponse> => {
-  const response = await apiClient.post<VerifySslResponse>('/api/ssl/verify', { certName })
+export const verifySslApi = async (certName: string, challengeType: ChallengeType): Promise<VerifySslResponse> => {
+  const response = await apiClient.post<VerifySslResponse>('/api/ssl/verify', { certName, challengeType })
   return response.data
 }
 

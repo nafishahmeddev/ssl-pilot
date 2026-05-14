@@ -33,8 +33,11 @@ const fqdnField = z
 const certNameSchema = z.object({ certName: fqdnField })
 const initiateSchema = z.object({
   certName:          fqdnField,
-  challengeType:     z.enum([ChallengeType.DNS_01, ChallengeType.HTTP_01]).default(ChallengeType.DNS_01),
   skipWildcardCheck: z.boolean().default(false),
+})
+const verifySchema = z.object({
+  certName:      fqdnField,
+  challengeType: z.enum([ChallengeType.DNS_01, ChallengeType.HTTP_01]),
 })
 
 // ── Wildcard coverage check ───────────────────────────────────────────────────
@@ -131,22 +134,10 @@ export const adoptWildcardHandler = factory.createHandlers(
 export const initiateSslHandler = factory.createHandlers(
   zValidator('json', initiateSchema),
   async (c) => {
-    const { certName, challengeType, skipWildcardCheck } = c.req.valid('json')
+    const { certName, skipWildcardCheck } = c.req.valid('json')
     const orgId = c.get('organizationId')
     const email = c.get('userEmail')
 
-    const isWildcard = certName.startsWith('*.')
-
-    if (isWildcard && challengeType === ChallengeType.HTTP_01) {
-      return ApiResponse.error(
-        c,
-        'Wildcard certificates require DNS-01 — HTTP-01 is forbidden by RFC 8555.',
-        'WILDCARD_HTTP_FORBIDDEN',
-        400,
-      )
-    }
-
-    // Block re-initiation for a cert that is already active and not yet expired
     const existing = await CertificateModel.findOne(
       { certName, organizationId: orgId },
       { status: 1, expiryDate: 1 },
@@ -171,7 +162,6 @@ export const initiateSslHandler = factory.createHandlers(
       }
     }
 
-    // Block if an active wildcard covers this cert — unless user explicitly chose dedicated
     if (!skipWildcardCheck) {
       const potentialWildcard = getPotentialWildcard(certName)
       if (potentialWildcard) {
@@ -193,11 +183,8 @@ export const initiateSslHandler = factory.createHandlers(
     }
 
     try {
-      const challengeInfo = await acmeService.initiateOrder(certName, orgId, email, challengeType)
-      const msg = challengeType === ChallengeType.HTTP_01
-        ? 'Order initiated. Serve the challenge file at the provided URL.'
-        : 'Order initiated. Add the TXT record to your DNS.'
-      return ApiResponse.success(c, challengeInfo, msg)
+      const result = await acmeService.initiateOrder(certName, orgId, email)
+      return ApiResponse.success(c, result, 'Order initiated. Complete any one of the listed challenges, then verify.')
     } catch (error: unknown) {
       return ApiResponse.error(c, (error as Error).message, 'INITIATE_ERROR', 500)
     }
@@ -215,9 +202,9 @@ const VERIFY_TTL_MS = 5 * 60 * 1000
  * On success transitions to `challenge_verified`.
  */
 export const verifyChallengeHandler = factory.createHandlers(
-  zValidator('json', certNameSchema),
+  zValidator('json', verifySchema),
   async (c) => {
-    const { certName } = c.req.valid('json')
+    const { certName, challengeType } = c.req.valid('json')
     const orgId = c.get('organizationId')
     const email = c.get('userEmail')
 
@@ -246,7 +233,7 @@ export const verifyChallengeHandler = factory.createHandlers(
       }
 
       await CertificateModel.updateOne({ _id: certDoc._id }, { $set: { lastChecked: new Date() } })
-      await acmeService.verifyChallenge(certName, orgId, email)
+      await acmeService.verifyChallenge(certName, orgId, email, challengeType)
 
       return ApiResponse.success(c, { status: 'challenge_verified' }, 'Challenge verified. Generate the certificate.')
     } catch (error: unknown) {

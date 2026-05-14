@@ -102,10 +102,10 @@ export interface WildcardCheckData {
 
 // ── API response aliases ───────────────────────────────────────────────────────
 
-export type DomainsResponse        = ApiResponse<{ domains: DomainWithCerts[] }>
-export type CertDetailResponse     = ApiResponse<CertDetail>
-export type InitiateSslResponse    = ApiResponse<ChallengeInfo>
-export type VerifySslResponse      = ApiResponse<{ status: 'challenge_verified' }>
-export type GenerateSslResponse    = ApiResponse<IssuedCertificate>
+export type DomainsResponse       = ApiResponse<{ domains: DomainWithCerts[] }>
+export type CertDetailResponse    = ApiResponse<CertDetail>
+export type InitiateSslResponse   = ApiResponse<{ challenges: ChallengeInfo[] }>
+export type VerifySslResponse     = ApiResponse<{ status: 'challenge_verified' }>
+export type GenerateSslResponse   = ApiResponse<IssuedCertificate>
 export type AdoptWildcardResponse  = ApiResponse<IssuedCertificate>
 export type WildcardCheckResponse  = ApiResponse<WildcardCheckData>
