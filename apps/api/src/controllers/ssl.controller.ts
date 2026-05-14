@@ -6,6 +6,7 @@ import { acmeService } from '@src/services/acme.service'
 import { DomainModel, getPotentialWildcard } from '@src/models/domain.model'
 import { CertificateModel, ChallengeType } from '@src/models/certificate.model'
 import { ApiResponse, errMsg } from '@src/shared/utils/response'
+import { logger } from '@src/shared/utils/logger'
 import type { Env } from '@src/app'
 import type { Context } from 'hono'
 
@@ -69,9 +70,11 @@ export const wildcardCheckHandler = factory.createHandlers(
     ).lean()
 
     if (!wildcard) {
+      logger.debug({ certName, orgId }, 'SSL: wildcard check — not covered')
       return ApiResponse.success(c, { covered: false }, 'No active wildcard found.')
     }
 
+    logger.debug({ certName, orgId, wildcardCertName: wildcard.certName }, 'SSL: wildcard check — covered')
     return ApiResponse.success(c, {
       covered: true,
       wildcard: {
@@ -117,8 +120,10 @@ export const adoptWildcardHandler = factory.createHandlers(
 
     try {
       const result = await acmeService.adoptWildcard(certName, orgId, wildcardCertId)
+      logger.info({ certName, orgId, wildcardCertId }, 'SSL: cert activated via wildcard adoption')
       return ApiResponse.success(c, result, 'Certificate activated via wildcard.')
     } catch (error: unknown) {
+      logger.error({ error, certName, orgId, wildcardCertId }, 'SSL: adopt-wildcard failed')
       return ApiResponse.error(c, errMsg(error), 'ADOPT_ERROR', 500)
     }
   },
@@ -145,6 +150,7 @@ export const initiateSslHandler = factory.createHandlers(
 
     if (existing) {
       if (existing.status === 'renewing' && !existing.renewalError) {
+        logger.warn({ certName, orgId, status: existing.status }, 'SSL: initiate blocked — auto-renewal in progress')
         return ApiResponse.error(
           c,
           'Auto-renewal is in progress. It will complete automatically.',
@@ -153,6 +159,7 @@ export const initiateSslHandler = factory.createHandlers(
         )
       }
       if (existing.status === 'active' && (!existing.expiryDate || existing.expiryDate > new Date())) {
+        logger.warn({ certName, orgId, status: existing.status }, 'SSL: initiate blocked — cert already active')
         return ApiResponse.error(
           c,
           'Certificate is already active. Delete it first or wait for expiry.',
@@ -184,8 +191,13 @@ export const initiateSslHandler = factory.createHandlers(
 
     try {
       const result = await acmeService.initiateOrder(certName, orgId, email)
+      logger.info(
+        { certName, orgId, challengeCount: result.challenges.length, skipWildcardCheck },
+        'SSL: ACME order initiated',
+      )
       return ApiResponse.success(c, result, 'Order initiated. Complete any one of the listed challenges, then verify.')
     } catch (error: unknown) {
+      logger.error({ error, certName, orgId }, 'SSL: initiate order failed')
       return ApiResponse.error(c, errMsg(error), 'INITIATE_ERROR', 500)
     }
   },
@@ -235,8 +247,10 @@ export const verifyChallengeHandler = factory.createHandlers(
       await CertificateModel.updateOne({ _id: certDoc._id }, { $set: { lastChecked: new Date() } })
       await acmeService.verifyChallenge(certName, orgId, email, challengeType)
 
+      logger.info({ certName, orgId, challengeType }, 'SSL: challenge verified')
       return ApiResponse.success(c, { status: 'challenge_verified' }, 'Challenge verified. Generate the certificate.')
     } catch (error: unknown) {
+      logger.error({ error, certName, orgId, challengeType }, 'SSL: verify challenge failed')
       return ApiResponse.error(c, errMsg(error), 'VERIFY_ERROR', 500)
     }
   },
@@ -273,8 +287,10 @@ export const generateCertHandler = factory.createHandlers(
       }
 
       const result = await acmeService.generateCertificate(certName, orgId, email)
+      logger.info({ certName, orgId }, 'SSL: certificate issued')
       return ApiResponse.success(c, result, 'Certificate issued successfully.')
     } catch (error: unknown) {
+      logger.error({ error, certName, orgId }, 'SSL: generate certificate failed')
       return ApiResponse.error(c, errMsg(error), 'GENERATE_ERROR', 500)
     }
   },
@@ -312,8 +328,10 @@ export const listDomainsHandler = factory.createHandlers(async (c) => {
       certs: certsByDomainId.get(d._id.toString()) ?? [],
     }))
 
+    logger.debug({ orgId, domainCount: domains.length, certCount: certs.length }, 'SSL: domains listed')
     return ApiResponse.success(c, { domains: result }, 'Domains fetched.')
   } catch (error: unknown) {
+    logger.error({ error, orgId }, 'SSL: list domains failed')
     return ApiResponse.error(c, errMsg(error), 'LIST_ERROR', 500)
   }
 })
@@ -360,10 +378,14 @@ export const deleteCertHandler = factory.createHandlers(async (c) => {
     const remaining = await CertificateModel.countDocuments({ domainId: cert.domainId })
     if (remaining === 0) {
       await DomainModel.deleteOne({ _id: cert.domainId })
+      logger.info({ certName: cert.certName, orgId, domainId: cert.domainId.toString() }, 'SSL: cert deleted — orphaned domain removed')
+    } else {
+      logger.info({ certName: cert.certName, orgId }, 'SSL: cert deleted')
     }
 
     return ApiResponse.success(c, null, 'Certificate deleted.')
   } catch (error: unknown) {
+    logger.error({ error, certId: id, orgId }, 'SSL: delete cert failed')
     return ApiResponse.error(c, errMsg(error), 'DELETE_ERROR', 500)
   }
 })
@@ -384,10 +406,12 @@ export const deleteDomainHandler = factory.createHandlers(async (c) => {
     const domain = await DomainModel.findOneAndDelete({ _id: id, organizationId: orgId })
     if (!domain) return ApiResponse.error(c, 'Domain not found.', 'NOT_FOUND', 404)
 
-    await CertificateModel.deleteMany({ domainId: id, organizationId: orgId })
+    const { deletedCount } = await CertificateModel.deleteMany({ domainId: id, organizationId: orgId })
+    logger.info({ domainName: domain.name, orgId, certsDeleted: deletedCount }, 'SSL: domain and all certs deleted')
 
     return ApiResponse.success(c, null, 'Domain and all certificates deleted.')
   } catch (error: unknown) {
+    logger.error({ error, domainId: id, orgId }, 'SSL: delete domain failed')
     return ApiResponse.error(c, errMsg(error), 'DELETE_ERROR', 500)
   }
 })
