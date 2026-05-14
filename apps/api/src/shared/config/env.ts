@@ -12,6 +12,8 @@ const envSchema = z.object({
   JWT_ACCESS_SECRET: z.string().min(16, 'JWT_ACCESS_SECRET must be at least 16 characters').default('access-secret-change-me-in-prod'),
   JWT_REFRESH_SECRET: z.string().min(16, 'JWT_REFRESH_SECRET must be at least 16 characters').default('refresh-secret-change-me-in-prod'),
   FRONTEND_URL: z.string().url('FRONTEND_URL must be a valid URL').default('http://localhost:5173'),
+  AXIOM_DATASET: z.string().min(1).optional(),
+  AXIOM_TOKEN:   z.string().min(1).optional(),
 })
 
 const parsedEnv = envSchema.safeParse(process.env)
@@ -33,6 +35,10 @@ if (data.NODE_ENV === 'production') {
       console.error(`🚨 SECURITY: ${name} is using the insecure default value in production. Set a strong secret.`)
       process.exit(1)
     }
+  }
+  if (!data.AXIOM_DATASET || !data.AXIOM_TOKEN) {
+    console.error('🚨 AXIOM_DATASET and AXIOM_TOKEN are required in production')
+    process.exit(1)
   }
   if (data.ACME_STAGING) {
     console.warn('⚠️  WARNING: ACME_STAGING=true in production — issued certificates will NOT be trusted by browsers.')
