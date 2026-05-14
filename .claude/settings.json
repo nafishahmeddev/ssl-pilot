@@ -14,7 +14,8 @@
       "Bash(git -C /Users/ahmed/Documents/Projects/ssl-pilot remote get-url origin)",
       "Bash(curl -s https://api.github.com/repos/actions/checkout/releases/latest)",
       "Bash(curl -s https://api.github.com/repos/softprops/action-gh-release/releases/latest)",
-      "Bash(bun install *)"
+      "Bash(bun install *)",
+      "Bash(npm config *)"
     ],
     "additionalDirectories": [
       "/Users/ahmed/Documents/Projects-pilot/apps/api/src/jobs"

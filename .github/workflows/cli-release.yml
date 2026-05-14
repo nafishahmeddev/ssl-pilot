@@ -94,16 +94,63 @@ jobs:
             | macOS x64 | `sp-darwin-x64` |
             | macOS ARM64 (Apple Silicon) | `sp-darwin-arm64` |
 
-            ### Usage
+            ---
+
+            ### Quick start
 
             ```bash
+            # 1. Set your API key (get it from the SSL Pilot dashboard → API Keys)
             export SSL_PILOT_API_KEY='sslpilot_...'
 
+            # 2. List certificates
             sp list
+
+            # 3. Download a certificate (interactive picker)
             sudo sp download
+
+            # 4. Download a specific domain
             sudo sp download '*.example.com'
+
+            # 5. Download by ID
             sudo sp download --id <cert-id>
             ```
+
+            ### Auto-renewal service (Linux / systemd)
+
+            ```bash
+            # Install and configure the background service
+            sudo -E sp service install
+
+            # Service management
+            sp service status                # show status
+            sudo sp service check            # run one check cycle now (test hooks/config)
+            sudo sp service start            # start
+            sudo sp service stop             # stop
+            sudo sp service uninstall        # remove service unit (keeps certs and config)
+
+            # Follow logs
+            journalctl -u ssl-pilot -f
+            ```
+
+            The service monitors watched domains, compares expiry dates locally, and re-downloads certificates before they expire. Post-download hook scripts in `/etc/ssl-pilot/hooks/` are executed automatically.
+
+            ### File layout
+
+            ```
+            /etc/ssl-pilot/
+              config.json          Service configuration
+              state.json           Local expiry cache
+              hooks/
+                global.sh          Runs after every download
+                example.com.sh     Runs after example.com downloads
+              example.com/
+                certificate.crt    Certificate  (644)
+                private.key        Private key  (600)
+            ```
+
+            ### Full setup guide
+
+            See [SETUP.md](https://github.com/nafishahmeddev/ssl-pilot/blob/main/apps/cli/SETUP.md)
           files: |
             apps/cli/dist/sp-linux-x64
             apps/cli/dist/sp-linux-arm64
