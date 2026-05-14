@@ -250,6 +250,24 @@ export default function CertDetail() {
         </div>
       )}
 
+      {/* Renewing — auto-renewal scheduled (no error yet) */}
+      {cert.status === 'renewing' && !cert.renewalError && (
+        <div className="rounded-xl px-4 py-3 flex items-start gap-2.5" style={{ background: 'var(--c-info-soft)', border: '1px solid oklch(62% 0.18 230 / 0.35)' }}>
+          <RefreshCw className="w-4 h-4 shrink-0 mt-0.5 animate-spin" style={{ color: 'var(--c-info)' }} />
+          <div>
+            <p className="text-sm font-semibold" style={{ color: 'var(--c-text-1)' }}>Auto-Renewal In Progress</p>
+            <p className="text-xs mt-0.5" style={{ color: 'var(--c-text-2)' }}>
+              The daemon has detected this certificate is expiring soon and is renewing it automatically.
+              {cert.renewalNextRetryAt && (
+                <> Next attempt scheduled for{' '}
+                  <span className="font-semibold">{new Date(cert.renewalNextRetryAt).toLocaleString()}</span>.
+                </>
+              )}
+            </p>
+          </div>
+        </div>
+      )}
+
       {/* Via wildcard info */}
       {cert.coveredByWildcardId && (
         <div className="rounded-xl px-4 py-3 flex items-center gap-2.5" style={{ background: 'var(--c-primary-soft)', border: '1px solid var(--c-primary-mid)' }}>
@@ -568,6 +586,7 @@ function StatusBadge({ status, expiring }: { status: CertStatus; expiring?: bool
   }
   const map: Record<CertStatus, { label: string; cls: string }> = {
     active:             { label: 'Active',            cls: 'badge-success' },
+    renewing:           { label: 'Renewing',          cls: 'badge-info'    },
     pending:            { label: 'Pending',           cls: 'badge-neutral' },
     pending_challenge:  { label: 'Challenge Pending', cls: 'badge-warning' },
     challenge_verified: { label: 'Verified',          cls: 'badge-info'    },

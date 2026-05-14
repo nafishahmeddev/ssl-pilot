@@ -140,14 +140,14 @@ export const initiateSslHandler = factory.createHandlers(
 
     const existing = await CertificateModel.findOne(
       { certName, organizationId: orgId },
-      { status: 1, expiryDate: 1 },
+      { status: 1, expiryDate: 1, renewalError: 1 },
     ).lean()
 
     if (existing) {
-      if (existing.status === 'renewing') {
+      if (existing.status === 'renewing' && !existing.renewalError) {
         return ApiResponse.error(
           c,
-          'Certificate renewal is already scheduled. Delete it to re-issue manually.',
+          'Auto-renewal is in progress. It will complete automatically.',
           'RENEWAL_IN_PROGRESS',
           409,
         )

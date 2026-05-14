@@ -131,10 +131,12 @@ export class AcmeService {
       acmeOrderUrl:  order.url,
     }
     const dbUnset: Record<string, 1> = {
-      challengeType:      1,  // cleared — set only after verify
-      renewalError:       1,
-      renewalFailedAt:    1,
-      coveredByWildcardId:1,
+      challengeType:       1,  // cleared — set only after verify
+      renewalError:        1,
+      renewalFailedAt:     1,
+      renewalRetryCount:   1,
+      renewalNextRetryAt:  1,
+      coveredByWildcardId: 1,
     }
 
     const challenges: (DnsChallengeResult | HttpChallengeResult)[] = []

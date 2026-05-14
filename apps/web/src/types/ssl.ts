@@ -2,7 +2,7 @@ import type { ApiResponse } from './api'
 
 // ── Enums ──────────────────────────────────────────────────────────────────────
 
-export type CertStatus = 'pending' | 'pending_challenge' | 'challenge_verified' | 'active' | 'expired' | 'failed'
+export type CertStatus = 'pending' | 'pending_challenge' | 'challenge_verified' | 'active' | 'renewing' | 'expired' | 'failed'
 
 export const ChallengeType = {
   DNS_01:  'dns-01',
@@ -52,6 +52,8 @@ export interface CertRecord {
   httpChallengeToken?: string
   httpChallengeKeyAuth?: string
   renewalError?: string
+  renewalRetryCount?: number
+  renewalNextRetryAt?: string
   expiryDate?: string
   issuedAt?: string
   createdAt: string

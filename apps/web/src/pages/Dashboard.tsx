@@ -205,6 +205,7 @@ function StatCard({ stat, isLoading }: { stat: StatDef; isLoading: boolean }) {
 function StatusDot({ status }: { status: CertStatus }) {
   const color: Record<CertStatus, string> = {
     active:             'var(--c-success)',
+    renewing:           'var(--c-info)',
     pending:            'var(--c-text-3)',
     pending_challenge:  'var(--c-warning)',
     challenge_verified: 'var(--c-info)',
@@ -217,6 +218,7 @@ function StatusDot({ status }: { status: CertStatus }) {
 function StatusBadge({ status }: { status: CertStatus }) {
   const map: Record<CertStatus, { label: string; cls: string }> = {
     active:             { label: 'Active',            cls: 'badge-success' },
+    renewing:           { label: 'Renewing',          cls: 'badge-info'    },
     pending:            { label: 'Pending',           cls: 'badge-neutral' },
     pending_challenge:  { label: 'Challenge Pending', cls: 'badge-warning' },
     challenge_verified: { label: 'Verified',          cls: 'badge-info'    },

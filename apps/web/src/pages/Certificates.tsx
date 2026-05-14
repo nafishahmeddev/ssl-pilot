@@ -292,6 +292,7 @@ function StatusBadge({ status, expiring }: { status: CertStatus; expiring?: bool
   }
   const map: Record<CertStatus, { label: string; cls: string }> = {
     active:             { label: 'Active',            cls: 'badge-success' },
+    renewing:           { label: 'Renewing',          cls: 'badge-info'    },
     pending:            { label: 'Pending',           cls: 'badge-neutral' },
     pending_challenge:  { label: 'Challenge Pending', cls: 'badge-warning' },
     challenge_verified: { label: 'Verified',          cls: 'badge-info'    },
