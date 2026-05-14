@@ -58,7 +58,8 @@ export async function runRenewalCycle(
     }
 
     const local           = state[cert.certName]
-    const certExpiry      = cert.expiryDate ? new Date(cert.expiryDate).getTime() : 0
+    const parsed          = cert.expiryDate ? new Date(cert.expiryDate).getTime() : 0
+    const certExpiry      = Number.isFinite(parsed) ? parsed : 0
     const neverDownloaded = !local
     const expiryChanged   = !neverDownloaded && local.expiryDate !== cert.expiryDate
     const expiringInTime  = certExpiry > 0 && certExpiry - now <= thresholdMs
@@ -101,7 +102,7 @@ export async function runRenewalCycle(
         lastError = undefined
         break
       } catch (err) {
-        lastError = err as Error
+        lastError = err instanceof Error ? err : new Error(String(err))
         attempt++
       }
     }

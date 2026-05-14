@@ -39,9 +39,9 @@ export async function saveCert(
 }
 
 function fsError(err: unknown, certName: string, path: string): never {
-  const e = err as NodeJS.ErrnoException
+  const e = err instanceof Error ? (err as NodeJS.ErrnoException) : null
 
-  if (e.code === 'EACCES' || e.code === 'EPERM') {
+  if (e?.code === 'EACCES' || e?.code === 'EPERM') {
     const name = certName.startsWith('*.') ? `'${certName}'` : certName
     process.stderr.write(`\nPermission denied: ${path}\n`)
     process.stderr.write(`/etc/ssl-pilot/certs requires root. Re-run:\n\n`)

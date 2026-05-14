@@ -5,7 +5,7 @@ import { isValidObjectId } from 'mongoose'
 import { acmeService } from '@src/services/acme.service'
 import { DomainModel, getPotentialWildcard } from '@src/models/domain.model'
 import { CertificateModel, ChallengeType } from '@src/models/certificate.model'
-import { ApiResponse } from '@src/shared/utils/response'
+import { ApiResponse, errMsg } from '@src/shared/utils/response'
 import type { Env } from '@src/app'
 import type { Context } from 'hono'
 
@@ -119,7 +119,7 @@ export const adoptWildcardHandler = factory.createHandlers(
       const result = await acmeService.adoptWildcard(certName, orgId, wildcardCertId)
       return ApiResponse.success(c, result, 'Certificate activated via wildcard.')
     } catch (error: unknown) {
-      return ApiResponse.error(c, (error as Error).message, 'ADOPT_ERROR', 500)
+      return ApiResponse.error(c, errMsg(error), 'ADOPT_ERROR', 500)
     }
   },
 )
@@ -186,7 +186,7 @@ export const initiateSslHandler = factory.createHandlers(
       const result = await acmeService.initiateOrder(certName, orgId, email)
       return ApiResponse.success(c, result, 'Order initiated. Complete any one of the listed challenges, then verify.')
     } catch (error: unknown) {
-      return ApiResponse.error(c, (error as Error).message, 'INITIATE_ERROR', 500)
+      return ApiResponse.error(c, errMsg(error), 'INITIATE_ERROR', 500)
     }
   },
 )
@@ -237,7 +237,7 @@ export const verifyChallengeHandler = factory.createHandlers(
 
       return ApiResponse.success(c, { status: 'challenge_verified' }, 'Challenge verified. Generate the certificate.')
     } catch (error: unknown) {
-      return ApiResponse.error(c, (error as Error).message, 'VERIFY_ERROR', 500)
+      return ApiResponse.error(c, errMsg(error), 'VERIFY_ERROR', 500)
     }
   },
 )
@@ -275,7 +275,7 @@ export const generateCertHandler = factory.createHandlers(
       const result = await acmeService.generateCertificate(certName, orgId, email)
       return ApiResponse.success(c, result, 'Certificate issued successfully.')
     } catch (error: unknown) {
-      return ApiResponse.error(c, (error as Error).message, 'GENERATE_ERROR', 500)
+      return ApiResponse.error(c, errMsg(error), 'GENERATE_ERROR', 500)
     }
   },
 )
@@ -314,7 +314,7 @@ export const listDomainsHandler = factory.createHandlers(async (c) => {
 
     return ApiResponse.success(c, { domains: result }, 'Domains fetched.')
   } catch (error: unknown) {
-    return ApiResponse.error(c, (error as Error).message, 'LIST_ERROR', 500)
+    return ApiResponse.error(c, errMsg(error), 'LIST_ERROR', 500)
   }
 })
 
@@ -335,7 +335,7 @@ export const getCertHandler = factory.createHandlers(async (c) => {
     if (!cert) return ApiResponse.error(c, 'Certificate not found.', 'NOT_FOUND', 404)
     return ApiResponse.success(c, cert, 'Certificate fetched.')
   } catch (error: unknown) {
-    return ApiResponse.error(c, (error as Error).message, 'FETCH_ERROR', 500)
+    return ApiResponse.error(c, errMsg(error), 'FETCH_ERROR', 500)
   }
 })
 
@@ -364,7 +364,7 @@ export const deleteCertHandler = factory.createHandlers(async (c) => {
 
     return ApiResponse.success(c, null, 'Certificate deleted.')
   } catch (error: unknown) {
-    return ApiResponse.error(c, (error as Error).message, 'DELETE_ERROR', 500)
+    return ApiResponse.error(c, errMsg(error), 'DELETE_ERROR', 500)
   }
 })
 
@@ -384,10 +384,10 @@ export const deleteDomainHandler = factory.createHandlers(async (c) => {
     const domain = await DomainModel.findOneAndDelete({ _id: id, organizationId: orgId })
     if (!domain) return ApiResponse.error(c, 'Domain not found.', 'NOT_FOUND', 404)
 
-    await CertificateModel.deleteMany({ domainId: id })
+    await CertificateModel.deleteMany({ domainId: id, organizationId: orgId })
 
     return ApiResponse.success(c, null, 'Domain and all certificates deleted.')
   } catch (error: unknown) {
-    return ApiResponse.error(c, (error as Error).message, 'DELETE_ERROR', 500)
+    return ApiResponse.error(c, errMsg(error), 'DELETE_ERROR', 500)
   }
 })

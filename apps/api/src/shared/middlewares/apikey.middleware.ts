@@ -15,7 +15,7 @@ export const apiKeyMiddleware = createMiddleware(async (c, next) => {
   const apiKey = await ApiKeyModel.findOneAndUpdate(
     { keyHash },
     { $set: { lastUsedAt: new Date() } },
-    { new: true, select: 'organizationId' },
+    { returnDocument: 'after', select: 'organizationId' },
   ).lean()
 
   if (!apiKey) {

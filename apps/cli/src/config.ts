@@ -27,7 +27,7 @@ export async function readConfig(): Promise<ServiceConfig> {
     const raw = await readFile(CONFIG_PATH, 'utf8')
     return { ...DEFAULTS, ...JSON.parse(raw) }
   } catch (err) {
-    if ((err as NodeJS.ErrnoException).code === 'ENOENT') return { ...DEFAULTS }
+    if (err instanceof Error && (err as NodeJS.ErrnoException).code === 'ENOENT') return { ...DEFAULTS }
     throw err
   }
 }

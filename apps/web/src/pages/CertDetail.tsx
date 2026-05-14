@@ -88,8 +88,8 @@ export default function CertDetail() {
 
   const generateMutation = useMutation({
     mutationFn: (certName: string) => generateSslApi(certName),
-    onSuccess: (res) => {
-      setCertModal({ certName: cert!.certName, ...res.data })
+    onSuccess: (res, certName) => {
+      setCertModal({ certName, ...res.data })
       qc.invalidateQueries({ queryKey: ['cert', id] })
       qc.invalidateQueries({ queryKey: ['domains'] })
     },

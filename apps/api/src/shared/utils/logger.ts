@@ -3,20 +3,20 @@ import { env } from '@src/shared/config/env'
 
 const isDev = env.NODE_ENV === 'development'
 
-const tagets: TransportTargetOptions[] = [{
+const targets: TransportTargetOptions[] = [{
   target: 'pino-pretty',
   options: { colorize: true, translateTime: 'SYS:standard' },
 }]
 
 if (env.NODE_ENV == "production") {
-  tagets.push({
+  targets.push({
     target: '@axiomhq/pino',
     options: { dataset: env.AXIOM_DATASET, token: env.AXIOM_TOKEN },
   })
 }
 
 const transport = pino.transport({
-  targets: tagets,
+  targets: targets,
   level: isDev ? 'debug' : 'info',
 })
 

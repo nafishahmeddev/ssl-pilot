@@ -17,7 +17,7 @@ export async function readState(): Promise<StateFile> {
     const raw = await readFile(STATE_PATH, 'utf8')
     return JSON.parse(raw) as StateFile
   } catch (err) {
-    if ((err as NodeJS.ErrnoException).code === 'ENOENT') return {}
+    if (err instanceof Error && (err as NodeJS.ErrnoException).code === 'ENOENT') return {}
     throw err
   }
 }

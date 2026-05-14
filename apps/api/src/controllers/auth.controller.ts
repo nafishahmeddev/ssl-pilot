@@ -4,7 +4,7 @@ import { z } from 'zod'
 import { UserModel } from '@src/models/user.model'
 import { OrganizationModel } from '@src/models/organization.model'
 import type { IOrganization } from '@src/models/organization.model'
-import { ApiResponse } from '@src/shared/utils/response'
+import { ApiResponse, errMsg } from '@src/shared/utils/response'
 import { sign, verify } from 'hono/jwt'
 import { setCookie, getCookie, deleteCookie } from 'hono/cookie'
 import { env } from '@src/shared/config/env'
@@ -12,18 +12,35 @@ import type { Env } from '@src/app'
 
 const factory = createFactory<Env>()
 
-/** Shared access-token payload — keeps loginHandler and refreshHandler in sync. */
-function createAccessToken(user: { _id: { toString(): string }; organizationId: { toString(): string }; role: string; email: string }) {
+type TokenUser = { _id: { toString(): string }; organizationId: { toString(): string }; role: string; email: string }
+
+function createAccessToken(user: TokenUser) {
   return sign(
     {
       sub:            user._id.toString(),
       organizationId: user.organizationId.toString(),
       role:           user.role,
       email:          user.email,
-      exp:            Math.floor(Date.now() / 1000) + 60 * 15, // 15 min
+      exp:            Math.floor(Date.now() / 1000) + 60 * 15,
     },
     env.JWT_ACCESS_SECRET,
   )
+}
+
+function createRefreshToken(user: { _id: { toString(): string } }) {
+  return sign(
+    { sub: user._id.toString(), exp: Math.floor(Date.now() / 1000) + 60 * 60 * 24 * 7 },
+    env.JWT_REFRESH_SECRET,
+  )
+}
+
+function setRefreshCookie(c: Parameters<typeof setCookie>[0], token: string) {
+  setCookie(c, 'refreshToken', token, {
+    httpOnly: true,
+    secure: env.NODE_ENV === 'production',
+    sameSite: 'Strict',
+    maxAge: 60 * 60 * 24 * 7,
+  })
 }
 
 const registerSchema = z.object({
@@ -56,23 +73,11 @@ export const registerHandler = factory.createHandlers(
       await user.save()
 
       const accessToken = await createAccessToken(user)
-
-      const now = Math.floor(Date.now() / 1000)
-      const refreshToken = await sign(
-        { sub: user._id.toString(), exp: now + 60 * 60 * 24 * 7 },
-        env.JWT_REFRESH_SECRET,
-      )
-
-      setCookie(c, 'refreshToken', refreshToken, {
-        httpOnly: true,
-        secure: env.NODE_ENV === 'production',
-        sameSite: 'Strict',
-        maxAge: 60 * 60 * 24 * 7,
-      })
+      setRefreshCookie(c, await createRefreshToken(user))
 
       return ApiResponse.success(c, { accessToken }, 'Registration successful', 201)
     } catch (error: unknown) {
-      return ApiResponse.error(c, (error as Error).message, 'REGISTER_ERROR', 500)
+      return ApiResponse.error(c, errMsg(error), 'REGISTER_ERROR', 500)
     }
   }
 )
@@ -89,23 +94,11 @@ export const loginHandler = factory.createHandlers(
       }
 
       const accessToken = await createAccessToken(user)
-
-      const now = Math.floor(Date.now() / 1000)
-      const refreshToken = await sign(
-        { sub: user._id.toString(), exp: now + 60 * 60 * 24 * 7 },
-        env.JWT_REFRESH_SECRET
-      )
-
-      setCookie(c, 'refreshToken', refreshToken, {
-        httpOnly: true,
-        secure: env.NODE_ENV === 'production',
-        sameSite: 'Strict',
-        maxAge: 60 * 60 * 24 * 7,
-      })
+      setRefreshCookie(c, await createRefreshToken(user))
 
       return ApiResponse.success(c, { accessToken }, 'Login successful')
     } catch (error: unknown) {
-      return ApiResponse.error(c, (error as Error).message, 'LOGIN_ERROR', 500)
+      return ApiResponse.error(c, errMsg(error), 'LOGIN_ERROR', 500)
     }
   }
 )
@@ -156,7 +149,7 @@ export const meHandler = factory.createHandlers(async (c) => {
       role: user.role,
     }, 'User profile fetched.')
   } catch (error: unknown) {
-    return ApiResponse.error(c, (error as Error).message, 'FETCH_PROFILE_ERROR', 500)
+    return ApiResponse.error(c, errMsg(error), 'FETCH_PROFILE_ERROR', 500)
   }
 })
 
@@ -186,7 +179,7 @@ export const changePasswordHandler = factory.createHandlers(
 
       return ApiResponse.success(c, null, 'Password changed successfully.')
     } catch (error: unknown) {
-      return ApiResponse.error(c, (error as Error).message, 'CHANGE_PASSWORD_ERROR', 500)
+      return ApiResponse.error(c, errMsg(error), 'CHANGE_PASSWORD_ERROR', 500)
     }
   }
 )

@@ -85,7 +85,7 @@ export class AcmeService {
     const domain = await DomainModel.findOneAndUpdate(
       { name: rootName, organizationId: orgId },
       { $setOnInsert: { name: rootName, organizationId: orgId } },
-      { upsert: true, new: true, setDefaultsOnInsert: true },
+      { upsert: true, returnDocument: 'after', setDefaultsOnInsert: true },
     )
     return domain!
   }
