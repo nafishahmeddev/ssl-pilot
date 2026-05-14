@@ -17,7 +17,10 @@
       "Bash(bun install *)",
       "Bash(npm config *)",
       "Read(//Users/ahmed/Documents/Projects-pilot/apps/api/src/**)",
-      "Read(//Users/ahmed/Documents/Projects-pilot/**)"
+      "Read(//Users/ahmed/Documents/Projects-pilot/**)",
+      "Bash(python3 -c \"import sys,json; s=json.load\\(sys.stdin\\)['scripts']; [print\\(k,':',v\\) for k,v in s.items\\(\\)]\")",
+      "Bash(python3 -c \"import sys,json; s=json.load\\(sys.stdin\\); [print\\(k,':',v\\) for k,v in s.get\\('scripts',{}\\).items\\(\\)]\")",
+      "Bash(echo \"EXIT:$?\")"
     ],
     "additionalDirectories": [
       "/Users/ahmed/Documents/Projects-pilot/apps/api/src/jobs"
