@@ -1,14 +1,11 @@
 import type { HTMLInputTypeAttribute, ReactNode } from 'react'
 import { useState } from 'react'
-import type { FieldApi } from '@tanstack/react-form'
+import type { AnyFieldApi } from '@tanstack/react-form'
 import { FieldInfo } from './FieldInfo'
 import { Eye, EyeOff } from 'lucide-react'
 
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-type StringFieldApi = FieldApi<any, any, any, any, string>
-
 interface FormInputProps {
-  field: StringFieldApi
+  field: AnyFieldApi
   label: string
   type?: HTMLInputTypeAttribute
   placeholder?: string

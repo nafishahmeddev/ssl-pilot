@@ -68,8 +68,7 @@ export default function CertDetail() {
   const cert = data?.data
 
   const initiateMutation = useMutation({
-    mutationFn: ({ certName, challengeType }: { certName: string; challengeType?: string }) =>
-      initiateSslApi(certName, challengeType as ChallengeType | undefined),
+    mutationFn: (certName: string) => initiateSslApi(certName, true),
     onSettled: () => initiateCD.start(),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ['cert', id] })
@@ -78,7 +77,8 @@ export default function CertDetail() {
   })
 
   const verifyMutation = useMutation({
-    mutationFn: (certName: string) => verifySslApi(certName),
+    mutationFn: ({ certName, challengeType }: { certName: string; challengeType: ChallengeType }) =>
+      verifySslApi(certName, challengeType),
     onSettled: () => recheckCD.start(),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ['cert', id] })
@@ -239,7 +239,7 @@ export default function CertDetail() {
             {cert.renewalError}
           </div>
           <button
-            onClick={() => initiateMutation.mutate({ certName: cert.certName, challengeType: cert.challengeType })}
+            onClick={() => initiateMutation.mutate(cert.certName)}
             disabled={initiateMutation.isPending || initiateCD.isCooling}
             className="btn btn-sm gap-2"
             style={{ background: 'var(--c-error-soft)', borderColor: 'oklch(58% 0.22 25 / 0.35)', color: 'var(--c-error)' }}
@@ -357,7 +357,7 @@ export default function CertDetail() {
 
             <div className="flex flex-col sm:flex-row gap-3 justify-between mt-4">
               <button
-                onClick={() => initiateMutation.mutate({ certName: cert.certName, challengeType: cert.challengeType })}
+                onClick={() => initiateMutation.mutate(cert.certName)}
                 disabled={initiateMutation.isPending || initiateCD.isCooling}
                 className="btn btn-ghost btn-sm gap-2"
               >
@@ -508,7 +508,7 @@ export default function CertDetail() {
                 : 'Certificate has expired. Renew to begin a new issuance flow.'}
             </p>
             <button
-              onClick={() => initiateMutation.mutate({ certName: cert.certName, challengeType: cert.challengeType })}
+              onClick={() => initiateMutation.mutate(cert.certName)}
               disabled={initiateMutation.isPending || initiateCD.isCooling}
               className="btn btn-primary btn-sm gap-2"
             >
