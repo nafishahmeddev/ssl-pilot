@@ -19,7 +19,7 @@ async function performDownload(cert: CertInfo, client: ApiClient): Promise<void>
 }
 
 export const downloadCommand = new Command('download')
-  .description('Download a certificate to /etc/ssl-pilot/<domain>/ — requires sudo')
+  .description('Download a certificate to /etc/ssl-pilot/certs/<domain>/ — requires sudo')
   .argument('[certName]', 'Certificate name, e.g. *.example.com (omit to pick interactively)')
   .option('-i, --id <id>', 'Download by certificate ID')
   .addHelpText('after', `

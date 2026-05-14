@@ -2,7 +2,7 @@ import { Command } from 'commander'
 import input from '@inquirer/input'
 import { writeFile, mkdir } from 'fs/promises'
 import { spawnSync } from 'child_process'
-import { readConfig, writeConfig, HOOKS_DIR } from '../../config.js'
+import { readConfig, writeConfig, CERTS_DIR, HOOKS_DIR } from '../../config.js'
 import { domainHookPath, GLOBAL_HOOK } from '../../hooks.js'
 
 const UNIT_PATH = '/etc/systemd/system/ssl-pilot.service'
@@ -95,6 +95,7 @@ export const installCommand = new Command('install')
 
       // Write config + create directories
       await writeConfig(config)
+      await mkdir(CERTS_DIR, { recursive: true })
       await mkdir(HOOKS_DIR, { recursive: true })
       console.log('\n✓ Config written to /etc/ssl-pilot/config.json')
 

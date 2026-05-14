@@ -2,6 +2,7 @@ import { readFile, writeFile, mkdir } from 'fs/promises'
 import { join } from 'path'
 
 export const SSL_PILOT_DIR = '/etc/ssl-pilot'
+export const CERTS_DIR     = join(SSL_PILOT_DIR, 'certs')
 export const HOOKS_DIR     = join(SSL_PILOT_DIR, 'hooks')
 
 const CONFIG_PATH = join(SSL_PILOT_DIR, 'config.json')
