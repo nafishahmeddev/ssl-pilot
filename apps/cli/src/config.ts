@@ -1,18 +1,22 @@
 import { readFile, writeFile, mkdir } from 'fs/promises'
 import { join } from 'path'
 
-const CONFIG_DIR = '/etc/ssl-pilot'
-const CONFIG_PATH = join(CONFIG_DIR, 'config.json')
+export const SSL_PILOT_DIR = '/etc/ssl-pilot'
+export const HOOKS_DIR     = join(SSL_PILOT_DIR, 'hooks')
+
+const CONFIG_PATH = join(SSL_PILOT_DIR, 'config.json')
 
 export interface ServiceConfig {
   apiUrl?: string
   renewalThresholdDays: number
   checkIntervalHours: number
+  watchDomains: string[]  // empty = watch all active certs
 }
 
 const DEFAULTS: ServiceConfig = {
   renewalThresholdDays: 30,
   checkIntervalHours: 12,
+  watchDomains: [],
 }
 
 export async function readConfig(): Promise<ServiceConfig> {
@@ -27,7 +31,7 @@ export async function readConfig(): Promise<ServiceConfig> {
 }
 
 export async function writeConfig(config: ServiceConfig): Promise<void> {
-  await mkdir(CONFIG_DIR, { recursive: true })
+  await mkdir(SSL_PILOT_DIR, { recursive: true })
   await writeFile(CONFIG_PATH, JSON.stringify(config, null, 2) + '\n', {
     encoding: 'utf8',
     mode: 0o600,

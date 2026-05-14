@@ -2,6 +2,8 @@ import { Command } from 'commander'
 import { createApiClient } from '../../api.js'
 import { saveCert } from '../../files.js'
 import { readConfig } from '../../config.js'
+import { readState, updateCertState } from '../../state.js'
+import { runHooks } from '../../hooks.js'
 
 function log(msg: string): void {
   console.log(`[${new Date().toISOString()}] ${msg}`)
@@ -28,37 +30,64 @@ async function checkAndRenew(): Promise<void> {
 
   const client = createApiClient({ apiKey, apiUrl: config.apiUrl })
 
-  let certs
+  let allCerts
   try {
-    certs = await client.listCerts()
+    allCerts = await client.listCerts()
   } catch (err) {
     log(`Failed to list certs: ${(err as Error).message}`)
     return
   }
 
-  const thresholdMs = config.renewalThresholdDays * 24 * 60 * 60 * 1000
-  const now = Date.now()
+  // Filter to watched domains; if watchDomains is empty, watch all active certs
+  const certs = config.watchDomains.length > 0
+    ? allCerts.filter(c => config.watchDomains.includes(c.certName))
+    : allCerts.filter(c => c.status === 'active')
 
-  const toRenew = certs.filter((c) => {
-    if (c.status !== 'active') return false
-    if (!c.expiryDate) return false
-    return new Date(c.expiryDate).getTime() - now <= thresholdMs
-  })
-
-  if (toRenew.length === 0) {
-    log(`All ${certs.length} cert(s) OK. Next check in ${config.checkIntervalHours}h.`)
+  if (certs.length === 0) {
+    log('No watched certs found.')
     return
   }
 
-  log(`${toRenew.length} cert(s) due for renewal.`)
+  const state          = await readState()
+  const thresholdMs    = config.renewalThresholdDays * 24 * 60 * 60 * 1000
+  const now            = Date.now()
 
-  for (const cert of toRenew) {
-    log(`Downloading ${cert.certName} (expires ${cert.expiryDate ?? 'unknown'})…`)
+  for (const cert of certs) {
+    if (cert.status !== 'active') {
+      log(`Skip ${cert.certName} — status: ${cert.status}`)
+      continue
+    }
+
+    const local = state[cert.certName]
+
+    // Needs download if: never downloaded, cert renewed server-side, or expiry within threshold
+    const certExpiry      = cert.expiryDate ? new Date(cert.expiryDate).getTime() : 0
+    const expiryChanged   = local ? local.expiryDate !== cert.expiryDate : false
+    const expiringInTime  = certExpiry > 0 && (certExpiry - now) <= thresholdMs
+    const neverDownloaded = !local
+
+    if (!neverDownloaded && !expiryChanged && !expiringInTime) {
+      log(`OK ${cert.certName} — expires ${cert.expiryDate ?? 'unknown'} (local match, not due)`)
+      continue
+    }
+
+    const reason = neverDownloaded ? 'first download' : expiryChanged ? 'cert renewed' : 'expiring soon'
+    log(`Downloading ${cert.certName} (${reason})…`)
+
     try {
       const files = await client.downloadCert(cert._id)
       const { certPath, keyPath } = await saveCert(files.certName, files.certPem, files.keyPem)
+
       log(`  Cert : ${certPath}`)
       log(`  Key  : ${keyPath}`)
+
+      await updateCertState(cert.certName, files.expiryDate ?? cert.expiryDate ?? '')
+
+      await runHooks(cert.certName, {
+        SSL_PILOT_DOMAIN:    cert.certName.replace(/^\*\./, ''),
+        SSL_PILOT_CERT_PATH: certPath,
+        SSL_PILOT_KEY_PATH:  keyPath,
+      }, log)
     } catch (err) {
       log(`  Error: ${(err as Error).message}`)
     }
@@ -70,15 +99,8 @@ export const daemonCommand = new Command('run')
   .action(async () => {
     log('SSL Pilot daemon starting.')
 
-    process.on('SIGTERM', () => {
-      log('SIGTERM received — shutting down.')
-      process.exit(0)
-    })
-
-    process.on('SIGINT', () => {
-      log('SIGINT received — shutting down.')
-      process.exit(0)
-    })
+    process.on('SIGTERM', () => { log('SIGTERM — shutting down.'); process.exit(0) })
+    process.on('SIGINT',  () => { log('SIGINT — shutting down.');  process.exit(0) })
 
     while (true) {
       await checkAndRenew()

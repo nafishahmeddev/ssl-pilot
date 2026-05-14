@@ -1,13 +1,18 @@
+import input from '@inquirer/input'
 import { readConfig } from './config.js'
 import { createApiClient, type ApiClient } from './api.js'
 
 export async function getConfiguredClient(): Promise<ApiClient> {
-  const apiKey = process.env['SSL_PILOT_API_KEY']
+  let apiKey = process.env['SSL_PILOT_API_KEY']
 
   if (!apiKey) {
-    console.error('Error: SSL_PILOT_API_KEY environment variable is not set.')
-    console.error('  export SSL_PILOT_API_KEY=\'sslpilot_...\'\n')
-    process.exit(1)
+    apiKey = await input({
+      message: 'SSL Pilot API key (sslpilot_...):',
+      validate: (v) =>
+        v.startsWith('sslpilot_') && v.length > 10
+          ? true
+          : 'Key must start with sslpilot_',
+    })
   }
 
   const config = await readConfig()
