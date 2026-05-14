@@ -29,6 +29,10 @@ export type ErrorResponse = {
 
 const API_VERSION = 'v1'
 
+export function errMsg(e: unknown): string {
+  return e instanceof Error ? e.message : String(e)
+}
+
 /**
  * Standardized API Response structure following industry best practices (Envelope Pattern).
  */
