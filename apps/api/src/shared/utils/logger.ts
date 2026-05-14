@@ -1,16 +1,25 @@
-import pino from 'pino'
+import pino, { type TransportTargetOptions } from 'pino'
 import { env } from '@src/shared/config/env'
 
 const isDev = env.NODE_ENV === 'development'
 
-// env schema enforces AXIOM_DATASET + AXIOM_TOKEN in production
-const transport: pino.TransportSingleOptions = isDev
-  ? { target: 'pino-pretty', options: { colorize: true, translateTime: 'SYS:standard' } }
-  : { target: '@axiomhq/pino', options: { dataset: env.AXIOM_DATASET as string, token: env.AXIOM_TOKEN as string } }
+const tagets: TransportTargetOptions[] = [{
+  target: 'pino-pretty',
+  options: { colorize: true, translateTime: 'SYS:standard' },
+}]
 
-export const logger = pino({
+if (env.NODE_ENV == "production") {
+  tagets.push({
+    target: '@axiomhq/pino',
+    options: { dataset: env.AXIOM_DATASET as string, token: env.AXIOM_TOKEN as string },
+  })
+}
+
+const transport = pino.transport({
+  targets: tagets,
   level: isDev ? 'debug' : 'info',
-  transport,
 })
+
+export const logger = pino(transport)
 
 export default logger

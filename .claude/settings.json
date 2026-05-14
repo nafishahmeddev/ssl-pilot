@@ -20,7 +20,8 @@
       "Read(//Users/ahmed/Documents/Projects-pilot/**)",
       "Bash(python3 -c \"import sys,json; s=json.load\\(sys.stdin\\)['scripts']; [print\\(k,':',v\\) for k,v in s.items\\(\\)]\")",
       "Bash(python3 -c \"import sys,json; s=json.load\\(sys.stdin\\); [print\\(k,':',v\\) for k,v in s.get\\('scripts',{}\\).items\\(\\)]\")",
-      "Bash(echo \"EXIT:$?\")"
+      "Bash(echo \"EXIT:$?\")",
+      "Bash(node --import tsx/esm src/index.ts)"
     ],
     "additionalDirectories": [
       "/Users/ahmed/Documents/Projects-pilot/apps/api/src/jobs"

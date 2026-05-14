@@ -24,4 +24,6 @@ program.addCommand(listCommand)
 program.addCommand(downloadCommand)
 program.addCommand(serviceCommand)
 
+program.action(() => program.outputHelp())
+
 program.parse()
