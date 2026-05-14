@@ -68,13 +68,6 @@ export const installCommand = new Command('install')
         default: existing.apiUrl ?? '',
       })
 
-      const thresholdStr = await input({
-        message: 'Renew certs expiring within (days):',
-        default: String(existing.renewalThresholdDays),
-        validate: (v) =>
-          Number.isInteger(Number(v)) && Number(v) > 0 ? true : 'Must be a positive integer',
-      })
-
       const intervalStr = await input({
         message: 'Check interval (hours):',
         default: String(existing.checkIntervalHours),
@@ -94,7 +87,7 @@ export const installCommand = new Command('install')
 
       const config = {
         apiUrl: apiUrl.trim() || undefined,
-        renewalThresholdDays: Number(thresholdStr),
+        renewalThresholdDays: existing.renewalThresholdDays,
         checkIntervalHours: Number(intervalStr),
         watchDomains,
       }

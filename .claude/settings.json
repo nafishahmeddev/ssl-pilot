@@ -15,7 +15,9 @@
       "Bash(curl -s https://api.github.com/repos/actions/checkout/releases/latest)",
       "Bash(curl -s https://api.github.com/repos/softprops/action-gh-release/releases/latest)",
       "Bash(bun install *)",
-      "Bash(npm config *)"
+      "Bash(npm config *)",
+      "Read(//Users/ahmed/Documents/Projects-pilot/apps/api/src/**)",
+      "Read(//Users/ahmed/Documents/Projects-pilot/**)"
     ],
     "additionalDirectories": [
       "/Users/ahmed/Documents/Projects-pilot/apps/api/src/jobs"
