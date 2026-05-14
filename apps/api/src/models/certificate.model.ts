@@ -1,6 +1,6 @@
 import { Schema, model, Document, Types } from 'mongoose'
 
-export type CertStatus = 'pending' | 'pending_challenge' | 'challenge_verified' | 'active' | 'expired' | 'failed'
+export type CertStatus = 'pending' | 'pending_challenge' | 'challenge_verified' | 'active' | 'renewing' | 'expired' | 'failed'
 
 export const ChallengeType = {
   DNS_01:  'dns-01',
@@ -20,7 +20,7 @@ export type CertType = (typeof CertType)[keyof typeof CertType]
  * under a root Domain.
  *
  * Status transitions:
- *   pending → pending_challenge → challenge_verified → active → expired → pending_challenge → …
+ *   pending → pending_challenge → challenge_verified → active → renewing → pending_challenge → challenge_verified → active
  *   pending_challenge → failed
  *
  * coveredByWildcardId is set when the cert was activated by adopting an existing
@@ -54,6 +54,8 @@ export interface ICertificate extends Document {
   // ── Renewal ─────────────────────────────────────────────────────────────────
   renewalError?: string
   renewalFailedAt?: Date
+  renewalRetryCount?: number
+  renewalNextRetryAt?: Date
   lastChecked?: Date
   createdAt: Date
   updatedAt: Date
@@ -67,7 +69,7 @@ const certificateSchema = new Schema<ICertificate>(
     certType:            { type: String, enum: Object.values(CertType), required: true },
     status: {
       type: String,
-      enum: ['pending', 'pending_challenge', 'challenge_verified', 'active', 'expired', 'failed'],
+      enum: ['pending', 'pending_challenge', 'challenge_verified', 'active', 'renewing', 'expired', 'failed'],
       default: 'pending',
     },
     challengeType:       { type: String, enum: Object.values(ChallengeType) },
@@ -84,6 +86,8 @@ const certificateSchema = new Schema<ICertificate>(
     issuedAt:            { type: Date },
     renewalError:        { type: String, maxlength: 2000 },
     renewalFailedAt:     { type: Date },
+    renewalRetryCount:   { type: Number, default: 0 },
+    renewalNextRetryAt:  { type: Date },
     lastChecked:         { type: Date },
   },
   { timestamps: true },

@@ -59,7 +59,7 @@ export const wildcardCheckHandler = factory.createHandlers(
       {
         certName:       potentialWildcard,
         organizationId: orgId,
-        status:         'active',
+        status:         { $in: ['active', 'renewing'] },
         expiryDate:     { $gt: new Date() },
       },
       { _id: 1, certName: 1, expiryDate: 1 },
@@ -152,13 +152,23 @@ export const initiateSslHandler = factory.createHandlers(
       { status: 1, expiryDate: 1 },
     ).lean()
 
-    if (existing?.status === 'active' && (!existing.expiryDate || existing.expiryDate > new Date())) {
-      return ApiResponse.error(
-        c,
-        'Certificate is already active. Delete it first or wait for expiry.',
-        'CERT_ALREADY_ACTIVE',
-        409,
-      )
+    if (existing) {
+      if (existing.status === 'renewing') {
+        return ApiResponse.error(
+          c,
+          'Certificate renewal is already scheduled. Delete it to re-issue manually.',
+          'RENEWAL_IN_PROGRESS',
+          409,
+        )
+      }
+      if (existing.status === 'active' && (!existing.expiryDate || existing.expiryDate > new Date())) {
+        return ApiResponse.error(
+          c,
+          'Certificate is already active. Delete it first or wait for expiry.',
+          'CERT_ALREADY_ACTIVE',
+          409,
+        )
+      }
     }
 
     // Block if an active wildcard covers this cert — unless user explicitly chose dedicated
@@ -168,7 +178,7 @@ export const initiateSslHandler = factory.createHandlers(
         const covering = await CertificateModel.exists({
           certName:       potentialWildcard,
           organizationId: orgId,
-          status:         'active',
+          status:         { $in: ['active', 'renewing'] },
           expiryDate:     { $gt: new Date() },
         })
         if (covering) {

@@ -90,6 +90,7 @@ export const installCommand = new Command('install')
         renewalThresholdDays: existing.renewalThresholdDays,
         checkIntervalHours: Number(intervalStr),
         watchDomains,
+        maxDownloadRetries: existing.maxDownloadRetries,
       }
 
       // Write config + create directories

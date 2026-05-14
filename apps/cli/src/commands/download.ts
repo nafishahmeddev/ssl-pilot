@@ -29,6 +29,8 @@ Examples:
   sudo sp download --id 6643abc...         By certificate ID
 `)
   .action(async (certName: string | undefined, opts: { id?: string }) => {
+    const DOWNLOADABLE = new Set(['active'])
+
     try {
       const client = await getConfiguredClient()
 
@@ -57,15 +59,15 @@ Examples:
           process.stderr.write('Run "sp list" to see available certificates.\n\n')
           process.exit(1)
         }
-        if (match.status !== 'active') {
-          process.stderr.write(`\nError: "${certName}" is not active (status: ${match.status})\n\n`)
+        if (!DOWNLOADABLE.has(match.status)) {
+          process.stderr.write(`\nError: "${certName}" is not available for download (status: ${match.status})\n\n`)
           process.exit(1)
         }
         await performDownload(match, client)
         return
       }
 
-      const active = certs.filter(c => c.status === 'active')
+      const active = certs.filter(c => DOWNLOADABLE.has(c.status))
 
       if (active.length === 0) {
         process.stdout.write('\nNo active certificates available.\n\n')

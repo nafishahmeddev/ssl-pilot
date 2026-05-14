@@ -39,14 +39,16 @@ export const cliDownloadCertHandler = factory.createHandlers(async (c) => {
 
   if (!isValidObjectId(id)) return badId(c, 'certificate')
 
+  const DOWNLOADABLE_STATUSES = ['active', 'renewing', 'pending_challenge', 'challenge_verified'] as const
+
   try {
     const cert = await CertificateModel.findOne(
-      { _id: id, organizationId: orgId, status: 'active' },
+      { _id: id, organizationId: orgId, status: { $in: DOWNLOADABLE_STATUSES }, expiryDate: { $gt: new Date() } },
       { certName: 1, certPem: 1, keyPem: 1, expiryDate: 1 },
     ).lean()
 
     if (!cert) {
-      return ApiResponse.error(c, 'Certificate not found or not active.', 'NOT_FOUND', 404)
+      return ApiResponse.error(c, 'Certificate not found or no longer valid.', 'NOT_FOUND', 404)
     }
     if (!cert.certPem || !cert.keyPem) {
       return ApiResponse.error(c, 'Certificate files not yet available.', 'NO_FILES', 404)

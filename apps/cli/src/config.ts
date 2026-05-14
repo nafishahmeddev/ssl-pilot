@@ -10,13 +10,15 @@ export interface ServiceConfig {
   apiUrl?: string
   renewalThresholdDays: number
   checkIntervalHours: number
-  watchDomains: string[]  // empty = watch all active certs
+  watchDomains: string[]       // empty = watch all active certs
+  maxDownloadRetries: number   // per-cert retries on download failure
 }
 
 const DEFAULTS: ServiceConfig = {
-  renewalThresholdDays: 30,
+  renewalThresholdDays: 5,
   checkIntervalHours: 12,
   watchDomains: [],
+  maxDownloadRetries: 3,
 }
 
 export async function readConfig(): Promise<ServiceConfig> {

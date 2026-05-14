@@ -2,6 +2,8 @@
  * renewal.job.ts
  *
  * Schedules the SSL certificate renewal cron job using croner.
+ * Applies a 10-day pre-expiry buffer: certs are marked 'renewing' and queued
+ * for ACME order initiation before they actually expire.
  *
  * Schedule: daily at 03:00 (server local time).
  * Guard:    `protect: true` — skips a tick if the previous run is still in progress.
@@ -13,7 +15,7 @@
  */
 
 import { Cron } from 'croner'
-import { checkAndRenewExpired } from '@src/services/renewal.service'
+import { checkAndScheduleRenewals } from '@src/services/renewal.service'
 import { logger } from '@src/shared/utils/logger'
 
 /** Holds the active croner instance so it can be stopped on shutdown. */
@@ -41,7 +43,7 @@ export function startRenewalJob(): void {
     },
     async () => {
       logger.info('Renewal job: tick started')
-      await checkAndRenewExpired()
+      await checkAndScheduleRenewals()
       logger.info('Renewal job: tick complete')
     }
   )

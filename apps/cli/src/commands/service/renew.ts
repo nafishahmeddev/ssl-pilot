@@ -10,6 +10,12 @@ export interface RenewalResult {
   errors: number
 }
 
+const BASE_RETRY_DELAY_MS = 2_000  // 2 s → 4 s → 8 s …
+
+function sleep(ms: number): Promise<void> {
+  return new Promise(resolve => setTimeout(resolve, ms))
+}
+
 export async function resolveApiKey(): Promise<string | null> {
   if (process.env['SSL_PILOT_API_KEY']) return process.env['SSL_PILOT_API_KEY']
 
@@ -27,23 +33,26 @@ export async function runRenewalCycle(
   apiKey: string,
   log: (msg: string) => void,
 ): Promise<RenewalResult> {
-  const config    = await readConfig()
-  const client    = createApiClient({ apiKey, apiUrl: config.apiUrl })
-  const allCerts  = await client.listCerts()
+  const config   = await readConfig()
+  const client   = createApiClient({ apiKey, apiUrl: config.apiUrl })
+  const allCerts = await client.listCerts()
+
+  const DOWNLOADABLE = new Set(['active'])
 
   const certs = config.watchDomains.length > 0
     ? allCerts.filter(c => config.watchDomains.includes(c.certName))
-    : allCerts.filter(c => c.status === 'active')
+    : allCerts.filter(c => DOWNLOADABLE.has(c.status))
 
   const state       = await readState()
   const thresholdMs = config.renewalThresholdDays * 24 * 60 * 60 * 1000
+  const maxRetries  = Math.max(0, config.maxDownloadRetries)
   const now         = Date.now()
 
   let downloaded = 0
   let errors     = 0
 
   for (const cert of certs) {
-    if (cert.status !== 'active') {
+    if (!DOWNLOADABLE.has(cert.status)) {
       log(`Skip ${cert.certName} — ${cert.status}`)
       continue
     }
@@ -63,24 +72,42 @@ export async function runRenewalCycle(
     const reason = neverDownloaded ? 'first download' : expiryChanged ? 'cert renewed' : 'expiring soon'
     log(`Downloading ${cert.certName} (${reason})…`)
 
-    try {
-      const files              = await client.downloadCert(cert._id)
-      const { certPath, keyPath } = await saveCert(files.certName, files.certPem, files.keyPem)
+    let lastError: Error | undefined
+    let attempt = 0
 
-      log(`  cert : ${certPath}`)
-      log(`  key  : ${keyPath}`)
+    while (attempt <= maxRetries) {
+      if (attempt > 0) {
+        const delay = BASE_RETRY_DELAY_MS * Math.pow(2, attempt - 1)
+        log(`  retry ${attempt}/${maxRetries} in ${delay / 1000}s…`)
+        await sleep(delay)
+      }
 
-      await updateCertState(cert.certName, files.expiryDate ?? cert.expiryDate ?? '')
+      try {
+        const files                  = await client.downloadCert(cert._id)
+        const { certPath, keyPath }  = await saveCert(files.certName, files.certPem, files.keyPem)
 
-      await runHooks(cert.certName, {
-        SSL_PILOT_DOMAIN:    cert.certName.replace(/^\*\./, ''),
-        SSL_PILOT_CERT_PATH: certPath,
-        SSL_PILOT_KEY_PATH:  keyPath,
-      }, log)
+        log(`  cert : ${certPath}`)
+        log(`  key  : ${keyPath}`)
 
-      downloaded++
-    } catch (err) {
-      log(`  error: ${(err as Error).message}`)
+        await updateCertState(cert.certName, files.expiryDate ?? cert.expiryDate ?? '')
+
+        await runHooks(cert.certName, {
+          SSL_PILOT_DOMAIN:    cert.certName.replace(/^\*\./, ''),
+          SSL_PILOT_CERT_PATH: certPath,
+          SSL_PILOT_KEY_PATH:  keyPath,
+        }, log)
+
+        downloaded++
+        lastError = undefined
+        break
+      } catch (err) {
+        lastError = err as Error
+        attempt++
+      }
+    }
+
+    if (lastError) {
+      log(`  error (gave up after ${maxRetries + 1} attempt${maxRetries !== 0 ? 's' : ''}): ${lastError.message}`)
       errors++
     }
   }
