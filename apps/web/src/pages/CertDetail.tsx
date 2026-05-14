@@ -269,84 +269,122 @@ export default function CertDetail() {
                 <AlertTriangle className="w-5 h-5" style={{ color: 'var(--c-warning)' }} />
               </div>
               <div>
-                <div className="flex items-center gap-2 mb-0.5">
-                  <p className="font-semibold" style={{ color: 'var(--c-text-1)' }}>
-                    {cert.challengeType === ChallengeType.HTTP_01 ? 'HTTP Challenge Required' : 'DNS Challenge Required'}
-                  </p>
-                  {cert.challengeType && <span className="badge badge-sm badge-ghost font-mono">{cert.challengeType}</span>}
-                </div>
-                <p className="text-xs" style={{ color: 'var(--c-text-2)' }}>
-                  {cert.challengeType === ChallengeType.HTTP_01
-                    ? 'Prove you control this domain by serving a file on your web server.'
-                    : 'Prove you control this domain by adding a TXT record to your DNS.'}
+                <p className="font-semibold" style={{ color: 'var(--c-text-1)' }}>Prove Domain Ownership</p>
+                <p className="text-xs mt-0.5" style={{ color: 'var(--c-text-2)' }}>
+                  Complete <strong>any one</strong> of the available challenges below to verify you control{' '}
+                  <span className="font-mono font-semibold">{cert.certName}</span>.
                 </p>
               </div>
             </div>
 
-            {/* DNS-01 */}
-            {cert.challengeType !== ChallengeType.HTTP_01 && (
-              <>
-                <ol className="space-y-1.5 mb-4 text-xs" style={{ color: 'var(--c-text-2)' }}>
-                  <li className="flex gap-2"><span className="font-bold shrink-0" style={{ color: 'var(--c-primary)' }}>1.</span>Log in to your DNS provider</li>
-                  <li className="flex gap-2"><span className="font-bold shrink-0" style={{ color: 'var(--c-primary)' }}>2.</span>Create a new <span className="font-mono font-semibold">TXT</span> record with the Name and Value below</li>
-                  <li className="flex gap-2"><span className="font-bold shrink-0" style={{ color: 'var(--c-primary)' }}>3.</span>Wait 1–5 minutes for DNS to propagate, then click Verify</li>
-                </ol>
-                <div className="rounded-xl p-4 space-y-4 font-mono text-sm" style={{ background: 'var(--c-surface)', border: '1px solid var(--c-border)' }}>
-                  <div className="flex items-center justify-between">
-                    <span className="text-xs uppercase tracking-wider" style={{ color: 'var(--c-text-3)' }}>Record Type</span>
-                    <span className="badge badge-neutral font-mono text-xs">TXT</span>
+            <div className="space-y-4">
+              {/* DNS-01 */}
+              {cert.txtRecordName && cert.txtRecordValue && (() => {
+                const relLabel = (() => {
+                  const domain = cert.certName.startsWith('*.') ? cert.certName.slice(2) : cert.certName
+                  const root   = domain.split('.').slice(-2).join('.')
+                  return cert.txtRecordName.endsWith(`.${root}`) ? cert.txtRecordName.slice(0, -(root.length + 1)) : cert.txtRecordName
+                })()
+                return (
+                  <div className="rounded-xl p-4" style={{ background: 'var(--c-surface)', border: '1px solid var(--c-border)' }}>
+                    <div className="flex items-center gap-2 mb-3">
+                      <span className="badge badge-sm badge-ghost font-mono">{ChallengeType.DNS_01}</span>
+                      <span className="text-xs font-semibold" style={{ color: 'var(--c-text-2)' }}>DNS TXT Record</span>
+                    </div>
+                    <ol className="space-y-1.5 mb-3 text-xs" style={{ color: 'var(--c-text-2)' }}>
+                      <li className="flex gap-2"><span className="font-bold shrink-0" style={{ color: 'var(--c-primary)' }}>1.</span>Log in to your DNS provider</li>
+                      <li className="flex gap-2"><span className="font-bold shrink-0" style={{ color: 'var(--c-primary)' }}>2.</span>Create a new <span className="font-mono font-semibold">TXT</span> record with the Name and Value below</li>
+                      <li className="flex gap-2"><span className="font-bold shrink-0" style={{ color: 'var(--c-primary)' }}>3.</span>Wait 1–5 minutes for DNS to propagate, then click Verify</li>
+                    </ol>
+                    <div className="rounded-xl p-4 space-y-4 font-mono text-sm mb-3" style={{ background: 'var(--c-card)', border: '1px solid var(--c-border)' }}>
+                      <div className="flex items-center justify-between">
+                        <span className="text-xs uppercase tracking-wider" style={{ color: 'var(--c-text-3)' }}>Record Type</span>
+                        <span className="badge badge-neutral font-mono text-xs">TXT</span>
+                      </div>
+                      {([
+                        { label: 'Name',  value: cert.txtRecordName,  key: 'txt-name',  color: 'var(--c-info)'   },
+                        { label: 'Value', value: cert.txtRecordValue, key: 'txt-value', color: 'var(--c-purple)' },
+                      ] as const).map(({ label, value, key, color }) => (
+                        <div key={key} className="space-y-1.5">
+                          <span className="text-xs uppercase tracking-wider" style={{ color: 'var(--c-text-3)' }}>{label}</span>
+                          <div className="flex items-start gap-2">
+                            <span className="flex-1 break-all" style={{ color }}>{value}</span>
+                            <button onClick={() => handleCopy(value, key)} className="btn btn-ghost btn-xs btn-square shrink-0">
+                              {copiedKey === key ? <Check className="w-3.5 h-3.5 text-success" /> : <Copy className="w-3.5 h-3.5" style={{ color: 'var(--c-text-2)' }} />}
+                            </button>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                    <p className="text-xs mb-3" style={{ color: 'var(--c-text-3)' }}>
+                      If your provider auto-appends your root domain, use{' '}
+                      <span className="font-mono font-semibold">{relLabel}</span> instead of the full FQDN.
+                    </p>
+                    <div className="flex justify-end">
+                      <button
+                        onClick={() => verifyMutation.mutate({ certName: cert.certName, challengeType: ChallengeType.DNS_01 })}
+                        disabled={verifyMutation.isPending || recheckCD.isCooling}
+                        className="btn btn-warning btn-sm gap-2"
+                      >
+                        {verifyMutation.isPending
+                          ? <><span className="loading loading-spinner loading-xs" /> Verifying…</>
+                          : recheckCD.isCooling
+                          ? <><RefreshCw className="w-3.5 h-3.5" /> Wait {recheckCD.secondsLeft}s</>
+                          : <><ShieldCheck className="w-3.5 h-3.5" /> Verify with dns-01</>}
+                      </button>
+                    </div>
                   </div>
-                  {[
-                    { label: 'Name',  value: cert.txtRecordName  ?? `_acme-challenge.${cert.certName.startsWith('*.') ? cert.certName.slice(2) : cert.certName}`, key: 'txt-name',  color: 'var(--c-info)'   },
-                    { label: 'Value', value: cert.txtRecordValue ?? '(not available)', key: 'txt-value', color: 'var(--c-purple)' },
-                  ].map(({ label, value, key, color }) => (
-                    <div key={key} className="space-y-1.5">
-                      <span className="text-xs uppercase tracking-wider" style={{ color: 'var(--c-text-3)' }}>{label}</span>
-                      <div className="flex items-start gap-2">
-                        <span className="flex-1 break-all" style={{ color }}>{value}</span>
-                        <button onClick={() => handleCopy(value, key)} className="btn btn-ghost btn-xs btn-square shrink-0">
-                          {copiedKey === key ? <Check className="w-3.5 h-3.5 text-success" /> : <Copy className="w-3.5 h-3.5" style={{ color: 'var(--c-text-2)' }} />}
-                        </button>
-                      </div>
-                    </div>
-                  ))}
-                </div>
-                <p className="text-xs mt-3" style={{ color: 'var(--c-text-3)' }}>
-                  Some DNS providers require only the subdomain part (e.g. <span className="font-mono">_acme-challenge</span> instead of the full FQDN).
-                </p>
-              </>
-            )}
+                )
+              })()}
 
-            {/* HTTP-01 */}
-            {cert.challengeType === ChallengeType.HTTP_01 && (
-              <>
-                <ol className="space-y-1.5 mb-4 text-xs" style={{ color: 'var(--c-text-2)' }}>
-                  <li className="flex gap-2"><span className="font-bold shrink-0" style={{ color: 'var(--c-primary)' }}>1.</span>Create <span className="font-mono">/.well-known/acme-challenge/</span> in your document root</li>
-                  <li className="flex gap-2"><span className="font-bold shrink-0" style={{ color: 'var(--c-primary)' }}>2.</span>Create file <span className="font-mono font-semibold">{cert.httpChallengeToken ?? '<token>'}</span> (no extension) with the File Content below</li>
-                  <li className="flex gap-2"><span className="font-bold shrink-0" style={{ color: 'var(--c-primary)' }}>3.</span>Verify it's reachable over plain HTTP (port 80, not HTTPS)</li>
-                  <li className="flex gap-2"><span className="font-bold shrink-0" style={{ color: 'var(--c-primary)' }}>4.</span>Click Verify</li>
-                </ol>
-                <div className="rounded-xl p-4 space-y-4 font-mono text-sm" style={{ background: 'var(--c-surface)', border: '1px solid var(--c-border)' }}>
-                  {[
-                    { label: 'Challenge URL', value: `http://${cert.certName}/.well-known/acme-challenge/${cert.httpChallengeToken ?? '(pending)'}`, key: 'http-url',     color: 'var(--c-info)'   },
-                    { label: 'File Content',  value: cert.httpChallengeKeyAuth ?? '(not available)',                                                   key: 'http-content', color: 'var(--c-purple)' },
-                  ].map(({ label, value, key, color }) => (
-                    <div key={key} className="space-y-1.5">
-                      <span className="text-xs uppercase tracking-wider" style={{ color: 'var(--c-text-3)' }}>{label}</span>
-                      <div className="flex items-start gap-2">
-                        <span className="flex-1 break-all" style={{ color }}>{value}</span>
-                        <button onClick={() => handleCopy(value, key)} className="btn btn-ghost btn-xs btn-square shrink-0">
-                          {copiedKey === key ? <Check className="w-3.5 h-3.5 text-success" /> : <Copy className="w-3.5 h-3.5" style={{ color: 'var(--c-text-2)' }} />}
-                        </button>
+              {/* HTTP-01 */}
+              {cert.httpChallengeToken && cert.httpChallengeKeyAuth && (
+                <div className="rounded-xl p-4" style={{ background: 'var(--c-surface)', border: '1px solid var(--c-border)' }}>
+                  <div className="flex items-center gap-2 mb-3">
+                    <span className="badge badge-sm badge-ghost font-mono">{ChallengeType.HTTP_01}</span>
+                    <span className="text-xs font-semibold" style={{ color: 'var(--c-text-2)' }}>HTTP File Challenge</span>
+                  </div>
+                  <ol className="space-y-1.5 mb-3 text-xs" style={{ color: 'var(--c-text-2)' }}>
+                    <li className="flex gap-2"><span className="font-bold shrink-0" style={{ color: 'var(--c-primary)' }}>1.</span>Create <span className="font-mono">/.well-known/acme-challenge/</span> in your document root</li>
+                    <li className="flex gap-2"><span className="font-bold shrink-0" style={{ color: 'var(--c-primary)' }}>2.</span>Create file <span className="font-mono font-semibold">{cert.httpChallengeToken}</span> (no extension) with the File Content below</li>
+                    <li className="flex gap-2"><span className="font-bold shrink-0" style={{ color: 'var(--c-primary)' }}>3.</span>Verify it's reachable over plain HTTP (port 80, not HTTPS)</li>
+                    <li className="flex gap-2"><span className="font-bold shrink-0" style={{ color: 'var(--c-primary)' }}>4.</span>Click Verify</li>
+                  </ol>
+                  <div className="rounded-xl p-4 space-y-4 font-mono text-sm mb-3" style={{ background: 'var(--c-card)', border: '1px solid var(--c-border)' }}>
+                    {([
+                      { label: 'Challenge URL', value: `http://${cert.certName}/.well-known/acme-challenge/${cert.httpChallengeToken}`, key: 'http-url',     color: 'var(--c-info)'   },
+                      { label: 'File Content',  value: cert.httpChallengeKeyAuth,                                                       key: 'http-content', color: 'var(--c-purple)' },
+                    ] as const).map(({ label, value, key, color }) => (
+                      <div key={key} className="space-y-1.5">
+                        <span className="text-xs uppercase tracking-wider" style={{ color: 'var(--c-text-3)' }}>{label}</span>
+                        <div className="flex items-start gap-2">
+                          <span className="flex-1 break-all" style={{ color }}>{value}</span>
+                          <button onClick={() => handleCopy(value, key)} className="btn btn-ghost btn-xs btn-square shrink-0">
+                            {copiedKey === key ? <Check className="w-3.5 h-3.5 text-success" /> : <Copy className="w-3.5 h-3.5" style={{ color: 'var(--c-text-2)' }} />}
+                          </button>
+                        </div>
                       </div>
-                    </div>
-                  ))}
+                    ))}
+                  </div>
+                  <p className="text-xs mb-3" style={{ color: 'var(--c-text-3)' }}>
+                    File must be plain text. HTTP→HTTPS redirects cause verification to fail.
+                  </p>
+                  <div className="flex justify-end">
+                    <button
+                      onClick={() => verifyMutation.mutate({ certName: cert.certName, challengeType: ChallengeType.HTTP_01 })}
+                      disabled={verifyMutation.isPending || recheckCD.isCooling}
+                      className="btn btn-warning btn-sm gap-2"
+                    >
+                      {verifyMutation.isPending
+                        ? <><span className="loading loading-spinner loading-xs" /> Verifying…</>
+                        : recheckCD.isCooling
+                        ? <><RefreshCw className="w-3.5 h-3.5" /> Wait {recheckCD.secondsLeft}s</>
+                        : <><ShieldCheck className="w-3.5 h-3.5" /> Verify with http-01</>}
+                    </button>
+                  </div>
                 </div>
-                <p className="text-xs mt-3" style={{ color: 'var(--c-text-3)' }}>
-                  File must be plain text. HTTP→HTTPS redirects cause verification to fail.
-                </p>
-              </>
-            )}
+              )}
+            </div>
 
             {verifyMutation.isError && (
               <div className="alert alert-error mt-3 text-sm">
@@ -355,7 +393,7 @@ export default function CertDetail() {
               </div>
             )}
 
-            <div className="flex flex-col sm:flex-row gap-3 justify-between mt-4">
+            <div className="mt-4">
               <button
                 onClick={() => initiateMutation.mutate(cert.certName)}
                 disabled={initiateMutation.isPending || initiateCD.isCooling}
@@ -363,17 +401,6 @@ export default function CertDetail() {
               >
                 {initiateMutation.isPending ? <span className="loading loading-spinner loading-xs" /> : <RotateCcw className="w-3.5 h-3.5" />}
                 {initiateCD.isCooling ? `Wait ${initiateCD.secondsLeft}s` : 'Re-initiate Order'}
-              </button>
-              <button
-                onClick={() => verifyMutation.mutate(cert.certName)}
-                disabled={verifyMutation.isPending || recheckCD.isCooling}
-                className="btn btn-warning gap-2"
-              >
-                {verifyMutation.isPending
-                  ? <><span className="loading loading-spinner loading-sm" /> Verifying…</>
-                  : recheckCD.isCooling
-                  ? <><RefreshCw className="w-4 h-4" /> Wait {recheckCD.secondsLeft}s</>
-                  : <><ShieldCheck className="w-4 h-4" /> Verify Ownership</>}
               </button>
             </div>
           </div>
