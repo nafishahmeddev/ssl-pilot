@@ -37,7 +37,7 @@ export async function runRenewalCycle(
   const client   = createApiClient({ apiKey, apiUrl: config.apiUrl })
   const allCerts = await client.listCerts()
 
-  const DOWNLOADABLE = new Set(['active'])
+  const DOWNLOADABLE = new Set(['active', 'renewing'])
 
   const certs = config.watchDomains.length > 0
     ? allCerts.filter(c => config.watchDomains.includes(c.certName))

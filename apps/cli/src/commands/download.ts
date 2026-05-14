@@ -29,7 +29,7 @@ Examples:
   sudo sp download --id 6643abc...         By certificate ID
 `)
   .action(async (certName: string | undefined, opts: { id?: string }) => {
-    const DOWNLOADABLE = new Set(['active'])
+    const DOWNLOADABLE = new Set(['active', 'renewing'])
 
     try {
       const client = await getConfiguredClient()
@@ -80,9 +80,10 @@ Examples:
           const expiry = c.expiryDate
             ? `expires ${new Date(c.expiryDate).toLocaleDateString()}`
             : 'no expiry'
+          const renewingTag = c.status === 'renewing' ? ' [renewing]' : ''
           const tag = c.certType === 'wildcard' ? ' [wildcard]' : c.certType === 'apex' ? ' [apex]' : ''
           return {
-            name: `${c.certName}${tag}  —  ${expiry}`,
+            name: `${c.certName}${tag}${renewingTag}  —  ${expiry}`,
             value: c,
           }
         }),
