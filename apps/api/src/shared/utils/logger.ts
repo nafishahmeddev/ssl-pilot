@@ -11,7 +11,7 @@ const tagets: TransportTargetOptions[] = [{
 if (env.NODE_ENV == "production") {
   tagets.push({
     target: '@axiomhq/pino',
-    options: { dataset: env.AXIOM_DATASET as string, token: env.AXIOM_TOKEN as string },
+    options: { dataset: env.AXIOM_DATASET, token: env.AXIOM_TOKEN },
   })
 }
 

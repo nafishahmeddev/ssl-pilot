@@ -1,4 +1,5 @@
 import type { Context } from 'hono'
+import type { StatusCode } from 'hono/utils/http-status'
 import type { Env } from '@src/app'
 
 export type ErrorDetail = {
@@ -35,9 +36,9 @@ export const ApiResponse = {
   /**
    * Success response wrapper.
    */
-  success: <T>(c: Context<Env>, data: T, message?: string, status: number = 200) => {
+  success: <T>(c: Context<Env>, data: T, message?: string, status: StatusCode = 200) => {
     const requestId = c.get('requestId')
-    c.status(status as any)
+    c.status(status)
     return c.json<SuccessResponse<T>>({
       data,
       meta: {
@@ -52,9 +53,9 @@ export const ApiResponse = {
   /**
    * Single error response wrapper.
    */
-  error: (c: Context<Env>, message: string, code: string = 'INTERNAL_ERROR', status: number = 500, target?: string) => {
+  error: (c: Context<Env>, message: string, code: string = 'INTERNAL_ERROR', status: StatusCode = 500, target?: string) => {
     const requestId = c.get('requestId')
-    c.status(status as any)
+    c.status(status)
     return c.json<ErrorResponse>({
       errors: [
         {

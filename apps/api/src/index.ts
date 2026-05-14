@@ -1,5 +1,6 @@
 import { serve } from '@hono/node-server'
 import type { ServerType } from '@hono/node-server'
+import type { Server as HttpServer } from 'node:http'
 import app from '@src/app'
 import { env } from '@src/shared/config/env'
 import { logger } from '@src/shared/utils/logger'
@@ -29,7 +30,7 @@ startServer().catch((err) => {
 const shutdown = () => {
   logger.info('Shutting down gracefully...')
   stopRenewalJob()
-  ;(server as any).closeAllConnections?.()
+  ;(server as HttpServer).closeAllConnections?.()
   server.close((err) => {
     if (err) {
       logger.error(err, 'Error during shutdown')

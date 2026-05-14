@@ -12,8 +12,8 @@ const envSchema = z.object({
   JWT_ACCESS_SECRET: z.string().min(16, 'JWT_ACCESS_SECRET must be at least 16 characters').default('access-secret-change-me-in-prod'),
   JWT_REFRESH_SECRET: z.string().min(16, 'JWT_REFRESH_SECRET must be at least 16 characters').default('refresh-secret-change-me-in-prod'),
   FRONTEND_URL: z.string().url('FRONTEND_URL must be a valid URL').default('http://localhost:5173'),
-  AXIOM_DATASET: z.string().min(1).optional(),
-  AXIOM_TOKEN:   z.string().min(1).optional(),
+  AXIOM_DATASET: z.string().default(''),
+  AXIOM_TOKEN:   z.string().default(''),
 })
 
 const parsedEnv = envSchema.safeParse(process.env)
